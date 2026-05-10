@@ -1,20 +1,21 @@
-import 'package:flutter/material.dart';
-import 'package:jalide/screens/editor_screen.dart';
+import 'dart:io';
 
-void main() {
-  runApp(const JalideApp());
-}
+abstract class FileService {
+  static Future<String> readFile(String path) async {
+    try {
+      final file = File(path);
+      return await file.readAsString();
+    } catch (e) {
+      throw Exception('Erro ao ler arquivo: $e');
+    }
+  }
 
-class JalideApp extends StatelessWidget {
-  const JalideApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'JALIDE',
-      theme: ThemeData.dark(),
-      home: const EditorScreen(),
-    );
+  static Future<void> saveFile(String path, String content) async {
+    try {
+      final file = File(path);
+      await file.writeAsString(content);
+    } catch (e) {
+      throw Exception('Erro ao salvar arquivo: $e');
+    }
   }
 }

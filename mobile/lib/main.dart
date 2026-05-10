@@ -1,20 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:jalide/screens/editor_screen.dart';
 
 void main() {
-  runApp(const MainApp());
+  runApp(const JalideApp());
 }
 
-class MainApp extends StatelessWidget {
-  const MainApp({super.key});
+class JalideApp extends StatelessWidget {
+  const JalideApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
-      home: Scaffold(
-        body: Center(
-          child: Text('Hello World!'),
-        ),
-      ),
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      title: 'JAL IDE',
+      theme: ThemeData.dark(),
+      home: const EditorScreen(),
     );
   }
 }
