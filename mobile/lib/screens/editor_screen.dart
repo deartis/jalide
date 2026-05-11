@@ -6,9 +6,12 @@ import 'package:flutter_code_editor/flutter_code_editor.dart';
 import 'package:highlight/languages/javascript.dart';
 import 'package:highlight/languages/json.dart';
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/file_service.dart';
+
 
 // Paleta da IDE — inspirado no mockup
 class JalideTheme {
@@ -35,6 +38,7 @@ class EditorScreen extends StatefulWidget {
 }
 
 class _EditorScreenState extends State<EditorScreen> {
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   // Tabs abertas
   final List<Map<String, dynamic>> _openTabs = [];
   int _activeTabIndex = -1;
@@ -65,7 +69,7 @@ class _EditorScreenState extends State<EditorScreen> {
 
   // Explorer de Projeto
   String? _projectPath;
-  List<FileSystemEntity> _projectFiles = [];
+  List<Map<String, dynamic>> _projectFiles = [];
 
   // Configurações
   double _fontSize = 14.0;
@@ -104,15 +108,33 @@ class _EditorScreenState extends State<EditorScreen> {
 
     // Load Project Path
     final savedProjectPath = prefs.getString('last_project_path');
-    if (savedProjectPath != null && Directory(savedProjectPath).existsSync()) {
-      await _loadProjectFiles(savedProjectPath);
+    if (savedProjectPath != null) {
+      bool exists = false;
+      if (savedProjectPath.startsWith('content://')) {
+        exists = true; // URIs SAF serão validadas na tentativa de carregamento
+      } else {
+        exists = Directory(savedProjectPath).existsSync();
+      }
+
+      if (exists) {
+        await _loadProjectFiles(savedProjectPath);
+      }
     }
 
     // Load Last Active File
     final savedActiveFile = prefs.getString('last_active_file');
-    if (savedActiveFile != null && File(savedActiveFile).existsSync()) {
-      final content = await FileService.readFile(savedActiveFile);
-      _addTab(savedActiveFile, content);
+    if (savedActiveFile != null) {
+      bool exists = false;
+      if (savedActiveFile.startsWith('content://')) {
+        exists = true; 
+      } else {
+        exists = File(savedActiveFile).existsSync();
+      }
+
+      if (exists) {
+        final content = await FileService.readFile(savedActiveFile);
+        _addTab(savedActiveFile, content);
+      }
     } else {
       if (mounted && _openTabs.isEmpty) _createNewTab();
     }
@@ -135,21 +157,55 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   Future<void> _loadProjectFiles(String path) async {
+    if (path.startsWith('content://')) {
+      try {
+        final List<dynamic> files = await _termuxChannel.invokeMethod('listSafDirectory', {'uri': path});
+        if (mounted) {
+          setState(() {
+            _projectPath = path;
+            _projectFiles = files.map((f) => {
+              'name': f['name'] as String,
+              'path': f['uri'] as String,
+              'isDir': f['isDir'] as bool,
+              'isSaf': true,
+            }).toList();
+          });
+        }
+      } catch (e) {
+        _showToast('Erro ao listar pasta SAF: $e');
+      }
+      return;
+    }
+
     final dir = Directory(path);
-    if (!dir.existsSync()) return;
-    final entities = await dir.list().toList();
+    if (!dir.existsSync()) {
+      _showToast('Erro: Pasta não encontrada em $path');
+      return;
+    }
 
-    entities.sort((a, b) {
-      if (a is Directory && b is! Directory) return -1;
-      if (a is! Directory && b is Directory) return 1;
-      return a.path.compareTo(b.path);
-    });
+    try {
+      final entities = await dir.list().toList();
 
-    if (mounted) {
-      setState(() {
-        _projectPath = path;
-        _projectFiles = entities;
+      entities.sort((a, b) {
+        if (a is Directory && b is! Directory) return -1;
+        if (a is! Directory && b is Directory) return 1;
+        return a.path.compareTo(b.path);
       });
+
+      if (mounted) {
+        setState(() {
+          _projectPath = path;
+          _projectFiles = entities.map((e) => {
+            'name': p.basename(e.path),
+            'path': e.path,
+            'isDir': e is Directory,
+            'isSaf': false,
+          }).toList();
+        });
+      }
+    } catch (e) {
+      _showToast('Erro ao listar arquivos: $e');
+      debugPrint('JALIDE_ERROR: $e');
     }
   }
 
@@ -209,7 +265,7 @@ class _EditorScreenState extends State<EditorScreen> {
 
   String get _fileName {
     if (_activeTabIndex == -1) return 'JALIDE';
-    return _activePath == null ? 'untitled.js' : p.basename(_activePath!);
+    return _activePath == null ? 'untitled.js' : _getDisplayName(_activePath!);
   }
 
   String get _languageName {
@@ -226,6 +282,25 @@ class _EditorScreenState extends State<EditorScreen> {
     return map[ext] ?? 'TEXT';
   }
 
+  Future<void> _openFileFromExplorer(String path) async {
+    try {
+      String content;
+      if (path.startsWith('content://')) {
+        content = await _termuxChannel.invokeMethod('readSafFile', {'uri': path});
+      } else {
+        content = await FileService.readFile(path);
+      }
+      _addTab(path, content);
+      
+      // Fecha o drawer usando a chave global do Scaffold
+      if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
+        _scaffoldKey.currentState?.closeDrawer();
+      }
+    } catch (e) {
+      _showToast('Erro ao abrir arquivo: $e');
+    }
+  }
+
   Future<void> _openFile() async {
     final result = await FilePicker.pickFiles(type: FileType.any);
     if (result == null) return;
@@ -240,7 +315,7 @@ class _EditorScreenState extends State<EditorScreen> {
     if (existing == -1) {
       final Map<String, dynamic> newTab = {
         'path': path,
-        'name': p.basename(path),
+        'name': _getDisplayName(path),
         'hasUnsavedChanges': false,
         'focusNode': FocusNode(),
       };
@@ -267,30 +342,117 @@ class _EditorScreenState extends State<EditorScreen> {
       await _saveFileAs();
       return;
     }
-    await FileService.saveFile(_activePath!, _activeController.text);
-    setState(() => _openTabs[_activeTabIndex]['hasUnsavedChanges'] = false);
-    if (!mounted) return;
-    _showToast('Salvo');
+    try {
+      debugPrint('JALIDE_ATTEMPT_SAVE: $_activePath');
+      
+      if (_activePath!.startsWith('content://')) {
+        await _termuxChannel.invokeMethod('writeSafFile', {
+          'uri': _activePath,
+          'content': _activeController.text,
+        });
+      } else {
+        final file = File(_activePath!);
+        await file.writeAsString(_activeController.text);
+      }
+      
+      setState(() => _openTabs[_activeTabIndex]['hasUnsavedChanges'] = false);
+      if (!mounted) return;
+      _showToast('Salvo com sucesso');
+    } catch (e) {
+      _showToast('Erro ao salvar: $e');
+      debugPrint('JALIDE_SAVE_ERROR: $e');
+    }
   }
 
   Future<void> _saveFileAs() async {
     if (_activeTabIndex == -1) return;
-    final path = await FilePicker.saveFile(
-      dialogTitle: 'Salvar como',
-      fileName: _activePath == null ? 'untitled.js' : p.basename(_activePath!),
+
+    final currentName = _activePath == null
+        ? 'untitled.js'
+        : p.basename(_activePath!);
+
+    final nameController = TextEditingController(text: currentName);
+
+    final confirmedName = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: JalideTheme.surface,
+        title: const Text(
+          'Salvar como',
+          style: TextStyle(color: JalideTheme.textPri),
+        ),
+        content: TextField(
+          controller: nameController,
+          autofocus: true,
+          style: const TextStyle(
+            color: JalideTheme.textPri,
+            fontFamily: 'monospace',
+          ),
+          decoration: const InputDecoration(
+            labelText: 'Nome do arquivo',
+            labelStyle: TextStyle(color: JalideTheme.textMuted),
+            enabledBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: JalideTheme.border),
+            ),
+            focusedBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: JalideTheme.accent),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text(
+              'Cancelar',
+              style: TextStyle(color: JalideTheme.textMuted),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, nameController.text),
+            child: const Text(
+              'Salvar',
+              style: TextStyle(color: JalideTheme.accent),
+            ),
+          ),
+        ],
+      ),
     );
-    if (path == null) {
+
+    if (confirmedName == null || confirmedName.trim().isEmpty) {
       _showToast('Cancelado');
       return;
     }
-    await FileService.saveFile(path, _activeController.text);
-    setState(() {
-      _openTabs[_activeTabIndex]['path'] = path;
-      _openTabs[_activeTabIndex]['name'] = p.basename(path);
-      _openTabs[_activeTabIndex]['hasUnsavedChanges'] = false;
-      _activeController.language = _langForPath(path);
-    });
-    _showToast('Salvo como ${p.basename(path)}');
+
+    // Resolve o diretório de destino:
+    // 1. Se há projeto aberto, salva lá
+    // 2. Caso contrário, salva na pasta de documentos do app
+    String dirPath;
+    if (_projectPath != null) {
+      dirPath = _projectPath!;
+    } else {
+      final docDir = await getApplicationDocumentsDirectory();
+      dirPath = docDir.path;
+    }
+
+    final finalPath = p.join(dirPath, confirmedName.trim());
+    debugPrint('JALIDE_SAVE_AS_PATH: $finalPath');
+
+    try {
+      final file = File(finalPath);
+      await file.writeAsString(_activeController.text);
+      setState(() {
+        _openTabs[_activeTabIndex]['path'] = finalPath;
+        _openTabs[_activeTabIndex]['name'] = p.basename(finalPath);
+        _openTabs[_activeTabIndex]['hasUnsavedChanges'] = false;
+        _activeController.language = _langForPath(finalPath);
+      });
+      // Atualiza o explorer se o arquivo foi salvo na pasta do projeto
+      if (_projectPath != null) await _loadProjectFiles(_projectPath!);
+      _showToast('Salvo como ${p.basename(finalPath)}');
+    } catch (e) {
+      _showToast('Erro ao salvar como: $e');
+      debugPrint('JALIDE_SAVE_AS_ERROR: $e');
+    }
   }
 
   // Insere snippet no cursor com auto-indentação
@@ -360,20 +522,326 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   Future<void> _pickProjectFolder() async {
-    final path = await FilePicker.getDirectoryPath();
-    if (path == null) return;
+    if (Platform.isAndroid) {
+      // Só pede permissão se ainda não tiver sido concedida
+      final status = await Permission.manageExternalStorage.status;
+      if (!status.isGranted) {
+        final result = await Permission.manageExternalStorage.request();
+        if (!result.isGranted) {
+          _showToast('Permissão de armazenamento negada');
+          return;
+        }
+      }
+    }
 
+    String? path;
+    if (Platform.isAndroid) {
+      // Usa o seletor nativo SAF que implementamos para garantir a URI content://
+      path = await _termuxChannel.invokeMethod('pickSafDirectory');
+    } else {
+      path = await FilePicker.getDirectoryPath();
+    }
+
+    if (path == null) {
+      _showToast('Nenhuma pasta selecionada');
+      return;
+    }
+
+    debugPrint('JALIDE_PROJECT_PATH: $path');
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('last_project_path', path);
-
     await _loadProjectFiles(path);
   }
 
-  Future<void> _openFileFromExplorer(String path) async {
-    final content = await FileService.readFile(path);
-    _addTab(path, content);
-    if (mounted) Navigator.pop(context); // Fecha o drawer
+  // ─── Integração Termux ──────────────────────────────────────────────────
+  static const _termuxHome = '/data/data/com.termux/files/home';
+  static const _jalideWorkspace = '/sdcard/jalide-workspace';
+  static const _termuxChannel = MethodChannel('com.jalide/termux');
+
+  Future<void> _openTermuxWorkspace() async {
+    final pathCtrl = TextEditingController(text: '~/');
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        bool copied = false;
+        return AlertDialog(
+          backgroundColor: JalideTheme.surface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          title: Row(
+            children: [
+              Container(
+                width: 10, height: 10,
+                decoration: const BoxDecoration(
+                  color: Color(0xFF4CAF50), shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Text('Workspace Termux',
+                  style: TextStyle(color: JalideTheme.textPri, fontSize: 15)),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'O JALIDE vai pedir ao Termux para criar um link seguro da sua pasta no /sdcard/, tornando-a editável.',
+                style: TextStyle(color: JalideTheme.textMuted, fontSize: 12, height: 1.5),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: pathCtrl,
+                autofocus: true,
+                style: const TextStyle(
+                  color: JalideTheme.textPri, fontFamily: 'monospace', fontSize: 13,
+                ),
+                decoration: const InputDecoration(
+                  labelText: 'Pasta no Termux',
+                  hintText: '~/projetos/meu-app',
+                  labelStyle: TextStyle(color: JalideTheme.textMuted),
+                  hintStyle: TextStyle(color: JalideTheme.textMuted),
+                  enabledBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(color: JalideTheme.border)),
+                  focusedBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(color: Color(0xFF4CAF50))),
+                ),
+              ),
+              const SizedBox(height: 14),
+              StatefulBuilder(
+                builder: (ctx2, setLocalState) {
+                  const setupCmd =
+                      'echo "allow-external-apps = true" >> ~/.termux/termux.properties\n'
+                      'termux-setup-storage';
+                  return Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF4CAF50).withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFF4CAF50).withValues(alpha: 0.25)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Expanded(
+                              child: Text(
+                                'Pré-requisito (uma vez no Termux):',
+                                style: TextStyle(
+                                  color: Color(0xFF4CAF50),
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            GestureDetector(
+                              onTap: () async {
+                                await Clipboard.setData(
+                                  const ClipboardData(text: setupCmd),
+                                );
+                                setLocalState(() => copied = true);
+                                Future.delayed(const Duration(seconds: 2), () {
+                                  if (ctx2.mounted) setLocalState(() => copied = false);
+                                });
+                              },
+                              child: AnimatedSwitcher(
+                                duration: const Duration(milliseconds: 200),
+                                child: copied
+                                    ? const Icon(Icons.check_circle_rounded,
+                                        key: ValueKey('check'),
+                                        size: 16,
+                                        color: Color(0xFF4CAF50))
+                                    : const Icon(Icons.copy_rounded,
+                                        key: ValueKey('copy'),
+                                        size: 16,
+                                        color: Color(0xFF4CAF50)),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          setupCmd,
+                          style: TextStyle(
+                            color: Color(0xFF4CAF50),
+                            fontFamily: 'monospace',
+                            fontSize: 10,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar', style: TextStyle(color: JalideTheme.textMuted)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Criar Link e Abrir',
+                  style: TextStyle(color: Color(0xFF4CAF50), fontWeight: FontWeight.bold)),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) return;
+
+    // Resolve o caminho real no Termux
+    String termuxPath = pathCtrl.text.trim();
+    if (termuxPath == '~' || termuxPath == '~/') {
+      termuxPath = _termuxHome;
+    } else if (termuxPath.startsWith('~/')) {
+      termuxPath = '$_termuxHome/${termuxPath.substring(2)}';
+    } else if (!termuxPath.startsWith('/')) {
+      termuxPath = '$_termuxHome/$termuxPath';
+    }
+    // Remove barra final
+    termuxPath = termuxPath.endsWith('/')
+        ? termuxPath.substring(0, termuxPath.length - 1)
+        : termuxPath;
+
+    final folderName = p.basename(termuxPath).isEmpty ? 'home' : p.basename(termuxPath);
+    final symlinkTarget = '$_jalideWorkspace/$folderName';
+
+    // Script bash: cria workspace e o link
+    final script =
+        'mkdir -p $_jalideWorkspace && '
+        'rm -f "$symlinkTarget" && '
+        'ln -s "$termuxPath" "$symlinkTarget"';
+
+    debugPrint('JALIDE_TERMUX_SCRIPT: $script');
+    _showToast('Enviando comando ao Termux...');
+
+    try {
+      if (Platform.isAndroid) {
+        await _termuxChannel.invokeMethod('runTermuxCommand', {'script': script});
+      }
+    } catch (e) {
+      _showToast('Erro ao enviar para o Termux: $e\nVerifique se o Termux está instalado.');
+      debugPrint('JALIDE_TERMUX_INTENT_ERROR: $e');
+      return;
+    }
+
+    // Aguarda o Termux processar o script
+    _showToast('Aguardando Termux criar o link...');
+    await Future.delayed(const Duration(seconds: 2));
+
+    final symlinkDir = Directory(symlinkTarget);
+    if (await symlinkDir.exists()) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('last_project_path', symlinkTarget);
+      await _loadProjectFiles(symlinkTarget);
+      _showToast('✅ Workspace "$folderName" aberto!');
+    } else {
+      // Tenta mais uma vez com delay maior
+      await Future.delayed(const Duration(seconds: 3));
+      if (await symlinkDir.exists()) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('last_project_path', symlinkTarget);
+        await _loadProjectFiles(symlinkTarget);
+        _showToast('✅ Workspace "$folderName" aberto!');
+      } else {
+        _showToast(
+          '⚠️ Link não criado. Verifique:\n'
+          '1. allow-external-apps = true no Termux\n'
+          '2. termux-setup-storage foi executado\n'
+          '3. Reinicie o Termux após configurar',
+        );
+      }
+    }
   }
+
+
+
+  Future<void> _showCreateDialog(bool isFile) async {
+    final controller = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: JalideTheme.surface,
+        title: Text(
+          isFile ? 'Novo arquivo' : 'Nova pasta',
+          style: const TextStyle(color: JalideTheme.textPri),
+        ),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          style: const TextStyle(
+            color: JalideTheme.textPri,
+            fontFamily: 'monospace',
+          ),
+          decoration: InputDecoration(
+            hintText: isFile ? 'nome_do_arquivo.js' : 'nome_da_pasta',
+            hintStyle: const TextStyle(color: JalideTheme.textMuted),
+            enabledBorder: const UnderlineInputBorder(
+              borderSide: BorderSide(color: JalideTheme.border),
+            ),
+            focusedBorder: const UnderlineInputBorder(
+              borderSide: BorderSide(color: JalideTheme.accent),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              'Cancelar',
+              style: TextStyle(color: JalideTheme.textMuted),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: const Text(
+              'Criar',
+              style: TextStyle(color: JalideTheme.accent),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (name != null && name.trim().isNotEmpty) {
+      await _createNewEntity(name.trim(), isFile);
+    }
+  }
+
+  Future<void> _createNewEntity(String name, bool isFile) async {
+    if (_projectPath == null) return;
+    final path = p.join(_projectPath!, name);
+
+    try {
+      if (isFile) {
+        debugPrint('JALIDE_CREATE_FILE: $path');
+        final file = File(path);
+        if (await file.exists()) {
+          _showToast('Arquivo já existe');
+          return;
+        }
+        await file.create(recursive: true);
+        await _loadProjectFiles(_projectPath!);
+        _addTab(path, ''); // Abre o novo arquivo
+        _showToast('Arquivo criado: $name');
+      } else {
+        final dir = Directory(path);
+        if (await dir.exists()) {
+          _showToast('Pasta já existe');
+          return;
+        }
+        await dir.create();
+        await _loadProjectFiles(_projectPath!);
+      }
+    } catch (e) {
+      _showToast('Erro ao criar: $e');
+    }
+  }
+
 
   dynamic _langForPath(String? path) {
     if (path == null) return javascript;
@@ -393,6 +861,7 @@ class _EditorScreenState extends State<EditorScreen> {
         systemNavigationBarColor: JalideTheme.accent,
       ),
       child: Scaffold(
+        key: _scaffoldKey,
         backgroundColor: JalideTheme.bg,
         appBar: _buildAppBar(),
         drawer: _buildFileExplorer(),
@@ -572,8 +1041,8 @@ class _EditorScreenState extends State<EditorScreen> {
     final bool hasUnsaved = tab['hasUnsavedChanges'] as bool;
 
     void proceedClose() {
-      (tab['controller'] as CodeController).dispose();
-      (tab['focusNode'] as FocusNode).dispose();
+      final controller = tab['controller'] as CodeController;
+      final focusNode = tab['focusNode'] as FocusNode;
 
       setState(() {
         _openTabs.removeAt(index);
@@ -587,6 +1056,14 @@ class _EditorScreenState extends State<EditorScreen> {
           _activeTabIndex--;
         }
       });
+
+      // Adia o dispose para o próximo ciclo de microtask
+      // Isso evita que o Flutter tente buildar o widget com um node já destruído
+      Future.microtask(() {
+        controller.dispose();
+        focusNode.dispose();
+      });
+
       _saveActiveFilePreference(
         _activeTabIndex != -1
             ? _openTabs[_activeTabIndex]['path'] as String?
@@ -993,18 +1470,35 @@ class _EditorScreenState extends State<EditorScreen> {
     }
   }
 
-  Widget _buildExplorerNode(FileSystemEntity entity) {
-    final name = p.basename(entity.path);
-    final isDir = entity is Directory;
+  String _getDisplayName(String path, {bool uppercase = false}) {
+    String name;
+    if (path.startsWith('content://')) {
+      try {
+        final decoded = Uri.decodeFull(path);
+        final parts = decoded.split('/');
+        name = parts.lastWhere((s) => s.isNotEmpty, orElse: () => 'PROJETO');
+      } catch (e) {
+        name = 'ARQUIVO';
+      }
+    } else {
+      name = p.basename(path);
+    }
+    return uppercase ? name.toUpperCase() : name;
+  }
+
+  Widget _buildExplorerNode(Map<String, dynamic> item) {
+    final name = item['name'] as String;
+    final path = item['path'] as String;
+    final isDir = item['isDir'] as bool;
+    final isSaf = item['isSaf'] as bool;
 
     if (isDir) {
-      // Ignorar pastas ocultas comuns em projetos (como .git) para não travar
       if (name.startsWith('.')) return const SizedBox();
 
       return Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
-          key: PageStorageKey(entity.path),
+          key: PageStorageKey(path),
           tilePadding: const EdgeInsets.symmetric(horizontal: 16),
           leading: const Icon(
             Icons.folder_rounded,
@@ -1023,15 +1517,29 @@ class _EditorScreenState extends State<EditorScreen> {
           collapsedIconColor: JalideTheme.textMuted,
           childrenPadding: const EdgeInsets.only(left: 12),
           children: [
-            FutureBuilder<List<FileSystemEntity>>(
-              future: (entity).list().toList().then((list) {
-                list.sort((a, b) {
-                  if (a is Directory && b is! Directory) return -1;
-                  if (a is! Directory && b is Directory) return 1;
-                  return a.path.compareTo(b.path);
-                });
-                return list;
-              }),
+            FutureBuilder<List<Map<String, dynamic>>>(
+              future: isSaf 
+                ? _termuxChannel.invokeMethod('listSafDirectory', {'uri': path}).then((res) => 
+                    (res as List).map((f) => {
+                      'name': f['name'] as String,
+                      'path': f['uri'] as String,
+                      'isDir': f['isDir'] as bool,
+                      'isSaf': true,
+                    }).toList()
+                  )
+                : Directory(path).list().toList().then((list) {
+                    list.sort((a, b) {
+                      if (a is Directory && b is! Directory) return -1;
+                      if (a is! Directory && b is Directory) return 1;
+                      return a.path.compareTo(b.path);
+                    });
+                    return list.map((e) => {
+                      'name': p.basename(e.path),
+                      'path': e.path,
+                      'isDir': e is Directory,
+                      'isSaf': false,
+                    }).toList();
+                  }),
               builder: (context, snapshot) {
                 if (!snapshot.hasData) {
                   return const Padding(
@@ -1070,7 +1578,7 @@ class _EditorScreenState extends State<EditorScreen> {
           fontFamily: 'monospace',
         ),
       ),
-      onTap: () => _openFileFromExplorer(entity.path),
+      onTap: () => _openFileFromExplorer(path),
     );
   }
 
@@ -1080,7 +1588,7 @@ class _EditorScreenState extends State<EditorScreen> {
       child: Column(
         children: [
           Container(
-            padding: const EdgeInsets.fromLTRB(16, 60, 16, 20),
+            padding: const EdgeInsets.fromLTRB(16, 60, 8, 20),
             color: JalideTheme.surface,
             child: Row(
               children: [
@@ -1092,29 +1600,58 @@ class _EditorScreenState extends State<EditorScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    _projectPath == null
-                        ? 'EXPLORER'
-                        : p.basename(_projectPath!),
+                    _projectPath == null ? 'EXPLORER' : _getDisplayName(_projectPath!, uppercase: true),
                     style: const TextStyle(
                       color: JalideTheme.textPri,
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
                       letterSpacing: 1,
                     ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
                   ),
                 ),
+                if (_projectPath != null) ...[
+                  IconButton(
+                    onPressed: () => _showCreateDialog(true),
+                    icon: const Icon(
+                      Icons.note_add_outlined,
+                      color: JalideTheme.textMuted,
+                      size: 20,
+                    ),
+                    tooltip: 'Novo Arquivo',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    onPressed: () => _showCreateDialog(false),
+                    icon: const Icon(
+                      Icons.create_new_folder_outlined,
+                      color: JalideTheme.textMuted,
+                      size: 20,
+                    ),
+                    tooltip: 'Nova Pasta',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                  const SizedBox(width: 8),
+                ],
                 IconButton(
                   onPressed: _pickProjectFolder,
                   icon: const Icon(
-                    Icons.create_new_folder_outlined,
+                    Icons.folder_open_outlined,
                     color: JalideTheme.textMuted,
                     size: 20,
                   ),
                   tooltip: 'Selecionar pasta projeto',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
                 ),
               ],
             ),
           ),
+
           Expanded(
             child: _projectPath == null
                 ? Center(
@@ -1134,18 +1671,30 @@ class _EditorScreenState extends State<EditorScreen> {
                             fontSize: 12,
                           ),
                         ),
-                        const SizedBox(height: 24),
-                        ElevatedButton(
+                        const SizedBox(height: 12),
+                        ElevatedButton.icon(
                           onPressed: _pickProjectFolder,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: JalideTheme.accent,
                             foregroundColor: Colors.black,
-                            textStyle: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                            ),
+                            textStyle: const TextStyle(fontWeight: FontWeight.bold),
                           ),
-                          child: const Text('ABRIR PASTA'),
+                          icon: const Icon(Icons.folder_open_outlined, size: 16),
+                          label: const Text('ABRIR PASTA'),
                         ),
+                        const SizedBox(height: 10),
+                        if (Platform.isAndroid)
+                          ElevatedButton.icon(
+                            onPressed: _openTermuxWorkspace,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF1B3A1B),
+                              foregroundColor: const Color(0xFF4CAF50),
+                              side: const BorderSide(color: Color(0xFF4CAF50), width: 1),
+                              textStyle: const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            icon: const Icon(Icons.terminal, size: 16),
+                            label: const Text('ABRIR DO TERMUX'),
+                          ),
                       ],
                     ),
                   )
