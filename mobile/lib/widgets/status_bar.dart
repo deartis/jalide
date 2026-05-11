@@ -15,8 +15,9 @@ class StatusBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final _theme = ThemeProvider.of(context).current;
     return Container(
-      color: JalideTheme.accent,
+      color: _theme.accent,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: Row(
         children: [

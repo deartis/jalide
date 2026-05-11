@@ -28,7 +28,7 @@ class FileUtils {
     }
   }
 
-  static Color colorForFile(String name) {
+  static Color colorForFile(String name, {required JalideThemeVariant theme}) {
     final ext = p.extension(name).toLowerCase();
     switch (ext) {
       case '.js':
@@ -49,7 +49,7 @@ class FileUtils {
       case '.ico':
         return const Color(0xFFAB47BC); // Purple Image
       default:
-        return JalideTheme.textMuted;
+        return theme.textMuted;
     }
   }
 

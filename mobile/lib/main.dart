@@ -1,8 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:jalide/screens/editor_screen.dart';
+import 'package:jalide/theme/jalide_theme.dart';
 
-void main() {
-  runApp(const JalideApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final initialTheme = await ThemeProvider.loadTheme();
+  
+  runApp(
+    ThemeProvider(
+      notifier: ValueNotifier(initialTheme),
+      child: const JalideApp(),
+    ),
+  );
 }
 
 class JalideApp extends StatelessWidget {
@@ -10,10 +19,12 @@ class JalideApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final themeType = ThemeProvider.of(context).themeType;
+
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'JAL IDE',
-      theme: ThemeData.dark(),
+      theme: themeType == ThemeType.light ? ThemeData.light() : ThemeData.dark(),
       home: const EditorScreen(),
     );
   }

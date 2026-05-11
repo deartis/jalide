@@ -13,6 +13,7 @@ class TerminalPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final _theme = ThemeProvider.of(context).current;
     final keyboardVisible = MediaQuery.of(context).viewInsets.bottom > 0;
 
     return Container(
@@ -24,15 +25,15 @@ class TerminalPanel extends StatelessWidget {
             ? BorderRadius.circular(12)
             : BorderRadius.zero,
         border: Border(
-          top: BorderSide(color: JalideTheme.accent.withValues(alpha: 0.3)),
+          top: BorderSide(color: _theme.accent.withValues(alpha: 0.3)),
           left: keyboardVisible
-              ? BorderSide(color: JalideTheme.accent.withValues(alpha: 0.3))
+              ? BorderSide(color: _theme.accent.withValues(alpha: 0.3))
               : BorderSide.none,
           right: keyboardVisible
-              ? BorderSide(color: JalideTheme.accent.withValues(alpha: 0.3))
+              ? BorderSide(color: _theme.accent.withValues(alpha: 0.3))
               : BorderSide.none,
           bottom: keyboardVisible
-              ? BorderSide(color: JalideTheme.accent.withValues(alpha: 0.3))
+              ? BorderSide(color: _theme.accent.withValues(alpha: 0.3))
               : BorderSide.none,
         ),
         boxShadow: [
@@ -52,19 +53,15 @@ class TerminalPanel extends StatelessWidget {
           children: [
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              color: JalideTheme.accent.withValues(alpha: 0.1),
+              color: _theme.accent.withValues(alpha: 0.1),
               child: Row(
                 children: [
-                  const Icon(
-                    Icons.terminal_outlined,
-                    size: 14,
-                    color: JalideTheme.accent,
-                  ),
+                  Icon(Icons.terminal_outlined, size: 14, color: _theme.accent),
                   const SizedBox(width: 8),
-                  const Text(
+                  Text(
                     'TERMINAL',
                     style: TextStyle(
-                      color: JalideTheme.accent,
+                      color: _theme.accent,
                       fontSize: 10,
                       fontWeight: FontWeight.bold,
                       letterSpacing: 1,
@@ -73,11 +70,7 @@ class TerminalPanel extends StatelessWidget {
                   const Spacer(),
                   IconButton(
                     onPressed: onClose,
-                    icon: const Icon(
-                      Icons.close,
-                      size: 14,
-                      color: JalideTheme.textMuted,
-                    ),
+                    icon: Icon(Icons.close, size: 14, color: _theme.textMuted),
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
                   ),

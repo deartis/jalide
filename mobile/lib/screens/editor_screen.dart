@@ -19,8 +19,6 @@ import '../widgets/file_explorer.dart';
 import '../widgets/editor_tabs_bar.dart';
 import '../utils/file_utils.dart';
 
-
-
 class EditorScreen extends StatefulWidget {
   const EditorScreen({super.key});
 
@@ -50,6 +48,8 @@ class _EditorScreenState extends State<EditorScreen> {
   bool get _activeHasUnsavedChanges => _activeTabIndex != -1
       ? _openTabs[_activeTabIndex]['hasUnsavedChanges'] as bool
       : false;
+
+  JalideThemeVariant get _theme => ThemeProvider.of(context).current;
 
   bool _isTerminalVisible = false;
   final List<String> _terminalLogs = [
@@ -117,7 +117,7 @@ class _EditorScreenState extends State<EditorScreen> {
     if (savedActiveFile != null) {
       bool exists = false;
       if (savedActiveFile.startsWith('content://')) {
-        exists = true; 
+        exists = true;
       } else {
         exists = File(savedActiveFile).existsSync();
       }
@@ -150,16 +150,23 @@ class _EditorScreenState extends State<EditorScreen> {
   Future<void> _loadProjectFiles(String path) async {
     if (path.startsWith('content://')) {
       try {
-        final List<dynamic> files = await _termuxChannel.invokeMethod('listSafDirectory', {'uri': path});
+        final List<dynamic> files = await _termuxChannel.invokeMethod(
+          'listSafDirectory',
+          {'uri': path},
+        );
         if (mounted) {
           setState(() {
             _projectPath = path;
-            _projectFiles = files.map((f) => {
-              'name': f['name'] as String,
-              'path': f['uri'] as String,
-              'isDir': f['isDir'] as bool,
-              'isSaf': true,
-            }).toList();
+            _projectFiles = files
+                .map(
+                  (f) => {
+                    'name': f['name'] as String,
+                    'path': f['uri'] as String,
+                    'isDir': f['isDir'] as bool,
+                    'isSaf': true,
+                  },
+                )
+                .toList();
           });
         }
       } catch (e) {
@@ -186,12 +193,16 @@ class _EditorScreenState extends State<EditorScreen> {
       if (mounted) {
         setState(() {
           _projectPath = path;
-          _projectFiles = entities.map((e) => {
-            'name': p.basename(e.path),
-            'path': e.path,
-            'isDir': e is Directory,
-            'isSaf': false,
-          }).toList();
+          _projectFiles = entities
+              .map(
+                (e) => {
+                  'name': p.basename(e.path),
+                  'path': e.path,
+                  'isDir': e is Directory,
+                  'isSaf': false,
+                },
+              )
+              .toList();
         });
       }
     } catch (e) {
@@ -257,7 +268,9 @@ class _EditorScreenState extends State<EditorScreen> {
 
   String get _fileName {
     if (_activeTabIndex == -1) return 'JALIDE';
-    return _activePath == null ? 'untitled.js' : FileUtils.getDisplayName(_activePath!);
+    return _activePath == null
+        ? 'untitled.js'
+        : FileUtils.getDisplayName(_activePath!);
   }
 
   String get _languageName {
@@ -278,12 +291,14 @@ class _EditorScreenState extends State<EditorScreen> {
     try {
       String content;
       if (path.startsWith('content://')) {
-        content = await _termuxChannel.invokeMethod('readSafFile', {'uri': path});
+        content = await _termuxChannel.invokeMethod('readSafFile', {
+          'uri': path,
+        });
       } else {
         content = await FileService.readFile(path);
       }
       _addTab(path, content);
-      
+
       // Fecha o drawer usando a chave global do Scaffold
       if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
         _scaffoldKey.currentState?.closeDrawer();
@@ -338,7 +353,7 @@ class _EditorScreenState extends State<EditorScreen> {
     }
     try {
       debugPrint('JALIDE_ATTEMPT_SAVE: $_activePath');
-      
+
       if (_activePath!.startsWith('content://')) {
         await _termuxChannel.invokeMethod('writeSafFile', {
           'uri': _activePath,
@@ -348,7 +363,7 @@ class _EditorScreenState extends State<EditorScreen> {
         final file = File(_activePath!);
         await file.writeAsString(_activeController.text);
       }
-      
+
       setState(() => _openTabs[_activeTabIndex]['hasUnsavedChanges'] = false);
       if (!mounted) return;
       _showToast('Salvo com sucesso');
@@ -370,43 +385,31 @@ class _EditorScreenState extends State<EditorScreen> {
     final confirmedName = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: JalideTheme.surface,
-        title: const Text(
-          'Salvar como',
-          style: TextStyle(color: JalideTheme.textPri),
-        ),
+        backgroundColor: _theme.surface,
+        title: Text('Salvar como', style: TextStyle(color: _theme.textPri)),
         content: TextField(
           controller: nameController,
           autofocus: true,
-          style: const TextStyle(
-            color: JalideTheme.textPri,
-            fontFamily: 'monospace',
-          ),
-          decoration: const InputDecoration(
+          style: TextStyle(color: _theme.textPri, fontFamily: 'monospace'),
+          decoration: InputDecoration(
             labelText: 'Nome do arquivo',
-            labelStyle: TextStyle(color: JalideTheme.textMuted),
+            labelStyle: TextStyle(color: _theme.textMuted),
             enabledBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: JalideTheme.border),
+              borderSide: BorderSide(color: _theme.border),
             ),
             focusedBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: JalideTheme.accent),
+              borderSide: BorderSide(color: _theme.accent),
             ),
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text(
-              'Cancelar',
-              style: TextStyle(color: JalideTheme.textMuted),
-            ),
+            child: Text('Cancelar', style: TextStyle(color: _theme.textMuted)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, nameController.text),
-            child: const Text(
-              'Salvar',
-              style: TextStyle(color: JalideTheme.accent),
-            ),
+            child: Text('Salvar', style: TextStyle(color: _theme.accent)),
           ),
         ],
       ),
@@ -506,11 +509,11 @@ class _EditorScreenState extends State<EditorScreen> {
           msg,
           style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
         ),
-        backgroundColor: JalideTheme.surface,
+        backgroundColor: _theme.surface,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(8),
-          side: const BorderSide(color: JalideTheme.accent, width: 1),
+          side: BorderSide(color: _theme.accent, width: 1),
         ),
         duration: const Duration(seconds: 2),
       ),
@@ -562,45 +565,59 @@ class _EditorScreenState extends State<EditorScreen> {
       builder: (ctx) {
         bool copied = false;
         return AlertDialog(
-          backgroundColor: JalideTheme.surface,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          backgroundColor: _theme.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           title: Row(
             children: [
               Container(
-                width: 10, height: 10,
+                width: 10,
+                height: 10,
                 decoration: const BoxDecoration(
-                  color: Color(0xFF4CAF50), shape: BoxShape.circle,
+                  color: Color(0xFF4CAF50),
+                  shape: BoxShape.circle,
                 ),
               ),
               const SizedBox(width: 8),
-              const Text('Workspace Termux',
-                  style: TextStyle(color: JalideTheme.textPri, fontSize: 15)),
+              Text(
+                'Workspace Termux',
+                style: TextStyle(color: _theme.textPri, fontSize: 15),
+              ),
             ],
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'O JALIDE vai pedir ao Termux para criar um link seguro da sua pasta no /sdcard/, tornando-a editável.',
-                style: TextStyle(color: JalideTheme.textMuted, fontSize: 12, height: 1.5),
+                style: TextStyle(
+                  color: _theme.textMuted,
+                  fontSize: 12,
+                  height: 1.5,
+                ),
               ),
               const SizedBox(height: 14),
               TextField(
                 controller: pathCtrl,
                 autofocus: true,
-                style: const TextStyle(
-                  color: JalideTheme.textPri, fontFamily: 'monospace', fontSize: 13,
+                style: TextStyle(
+                  color: _theme.textPri,
+                  fontFamily: 'monospace',
+                  fontSize: 13,
                 ),
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Pasta no Termux',
                   hintText: '~/projetos/meu-app',
-                  labelStyle: TextStyle(color: JalideTheme.textMuted),
-                  hintStyle: TextStyle(color: JalideTheme.textMuted),
+                  labelStyle: TextStyle(color: _theme.textMuted),
+                  hintStyle: TextStyle(color: _theme.textMuted),
                   enabledBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: JalideTheme.border)),
+                    borderSide: BorderSide(color: _theme.border),
+                  ),
                   focusedBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: Color(0xFF4CAF50))),
+                    borderSide: BorderSide(color: Color(0xFF4CAF50)),
+                  ),
                 ),
               ),
               const SizedBox(height: 14),
@@ -614,7 +631,9 @@ class _EditorScreenState extends State<EditorScreen> {
                     decoration: BoxDecoration(
                       color: const Color(0xFF4CAF50).withValues(alpha: 0.08),
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: const Color(0xFF4CAF50).withValues(alpha: 0.25)),
+                      border: Border.all(
+                        color: const Color(0xFF4CAF50).withValues(alpha: 0.25),
+                      ),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -638,20 +657,25 @@ class _EditorScreenState extends State<EditorScreen> {
                                 );
                                 setLocalState(() => copied = true);
                                 Future.delayed(const Duration(seconds: 2), () {
-                                  if (ctx2.mounted) setLocalState(() => copied = false);
+                                  if (ctx2.mounted)
+                                    setLocalState(() => copied = false);
                                 });
                               },
                               child: AnimatedSwitcher(
                                 duration: const Duration(milliseconds: 200),
                                 child: copied
-                                    ? const Icon(Icons.check_circle_rounded,
+                                    ? const Icon(
+                                        Icons.check_circle_rounded,
                                         key: ValueKey('check'),
                                         size: 16,
-                                        color: Color(0xFF4CAF50))
-                                    : const Icon(Icons.copy_rounded,
+                                        color: Color(0xFF4CAF50),
+                                      )
+                                    : const Icon(
+                                        Icons.copy_rounded,
                                         key: ValueKey('copy'),
                                         size: 16,
-                                        color: Color(0xFF4CAF50)),
+                                        color: Color(0xFF4CAF50),
+                                      ),
                               ),
                             ),
                           ],
@@ -675,12 +699,20 @@ class _EditorScreenState extends State<EditorScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancelar', style: TextStyle(color: JalideTheme.textMuted)),
+              child: Text(
+                'Cancelar',
+                style: TextStyle(color: _theme.textMuted),
+              ),
             ),
             TextButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Criar Link e Abrir',
-                  style: TextStyle(color: Color(0xFF4CAF50), fontWeight: FontWeight.bold)),
+              child: const Text(
+                'Criar Link e Abrir',
+                style: TextStyle(
+                  color: Color(0xFF4CAF50),
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
           ],
         );
@@ -703,7 +735,9 @@ class _EditorScreenState extends State<EditorScreen> {
         ? termuxPath.substring(0, termuxPath.length - 1)
         : termuxPath;
 
-    final folderName = p.basename(termuxPath).isEmpty ? 'home' : p.basename(termuxPath);
+    final folderName = p.basename(termuxPath).isEmpty
+        ? 'home'
+        : p.basename(termuxPath);
     final symlinkTarget = '$_jalideWorkspace/$folderName';
 
     // Script bash: cria workspace e o link
@@ -717,10 +751,14 @@ class _EditorScreenState extends State<EditorScreen> {
 
     try {
       if (Platform.isAndroid) {
-        await _termuxChannel.invokeMethod('runTermuxCommand', {'script': script});
+        await _termuxChannel.invokeMethod('runTermuxCommand', {
+          'script': script,
+        });
       }
     } catch (e) {
-      _showToast('Erro ao enviar para o Termux: $e\nVerifique se o Termux está instalado.');
+      _showToast(
+        'Erro ao enviar para o Termux: $e\nVerifique se o Termux está instalado.',
+      );
       debugPrint('JALIDE_TERMUX_INTENT_ERROR: $e');
       return;
     }
@@ -754,50 +792,39 @@ class _EditorScreenState extends State<EditorScreen> {
     }
   }
 
-
-
   Future<void> _showCreateDialog(bool isFile) async {
     final controller = TextEditingController();
     final name = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: JalideTheme.surface,
+        backgroundColor: _theme.surface,
         title: Text(
           isFile ? 'Novo arquivo' : 'Nova pasta',
-          style: const TextStyle(color: JalideTheme.textPri),
+          style: TextStyle(color: _theme.textPri),
         ),
         content: TextField(
           controller: controller,
           autofocus: true,
-          style: const TextStyle(
-            color: JalideTheme.textPri,
-            fontFamily: 'monospace',
-          ),
+          style: TextStyle(color: _theme.textPri, fontFamily: 'monospace'),
           decoration: InputDecoration(
             hintText: isFile ? 'nome_do_arquivo.js' : 'nome_da_pasta',
-            hintStyle: const TextStyle(color: JalideTheme.textMuted),
-            enabledBorder: const UnderlineInputBorder(
-              borderSide: BorderSide(color: JalideTheme.border),
+            hintStyle: TextStyle(color: _theme.textMuted),
+            enabledBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: _theme.border),
             ),
-            focusedBorder: const UnderlineInputBorder(
-              borderSide: BorderSide(color: JalideTheme.accent),
+            focusedBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: _theme.accent),
             ),
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'Cancelar',
-              style: TextStyle(color: JalideTheme.textMuted),
-            ),
+            child: Text('Cancelar', style: TextStyle(color: _theme.textMuted)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, controller.text),
-            child: const Text(
-              'Criar',
-              style: TextStyle(color: JalideTheme.accent),
-            ),
+            child: Text('Criar', style: TextStyle(color: _theme.accent)),
           ),
         ],
       ),
@@ -838,7 +865,6 @@ class _EditorScreenState extends State<EditorScreen> {
     }
   }
 
-
   dynamic _langForPath(String? path) {
     if (path == null) return javascript;
     switch (p.extension(path).toLowerCase()) {
@@ -853,12 +879,12 @@ class _EditorScreenState extends State<EditorScreen> {
   Widget build(BuildContext context) {
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.light.copyWith(
-        statusBarColor: JalideTheme.bg,
-        systemNavigationBarColor: JalideTheme.accent,
+        statusBarColor: _theme.bg,
+        systemNavigationBarColor: _theme.accent,
       ),
       child: Scaffold(
         key: _scaffoldKey,
-        backgroundColor: JalideTheme.bg,
+        backgroundColor: _theme.bg,
         appBar: _buildAppBar(),
         drawer: FileExplorerDrawer(
           projectPath: _projectPath,
@@ -872,7 +898,7 @@ class _EditorScreenState extends State<EditorScreen> {
         ),
         body: Column(
           children: [
-            if (_openTabs.isNotEmpty) 
+            if (_openTabs.isNotEmpty)
               EditorTabsBar(
                 tabs: _openTabs,
                 activeIndex: _activeTabIndex,
@@ -893,20 +919,19 @@ class _EditorScreenState extends State<EditorScreen> {
                       bottom: 0,
                       child: TerminalPanel(
                         terminalLogs: _terminalLogs,
-                        onClose: () => setState(() => _isTerminalVisible = false),
+                        onClose: () =>
+                            setState(() => _isTerminalVisible = false),
                       ),
                     ),
                 ],
               ),
             ),
-            AuxKeyboard(
-              auxKeys: _auxKeys,
-              onKeyTap: _insertSnippet,
-            ),
+            AuxKeyboard(auxKeys: _auxKeys, onKeyTap: _insertSnippet),
             StatusBar(
               languageName: _languageName,
               hasUnsavedChanges: _activeHasUnsavedChanges,
-              onTerminalToggle: () => setState(() => _isTerminalVisible = !_isTerminalVisible),
+              onTerminalToggle: () =>
+                  setState(() => _isTerminalVisible = !_isTerminalVisible),
             ),
           ],
         ),
@@ -916,12 +941,12 @@ class _EditorScreenState extends State<EditorScreen> {
 
   AppBar _buildAppBar() {
     return AppBar(
-      backgroundColor: JalideTheme.surface,
+      backgroundColor: _theme.surface,
       elevation: 0,
       titleSpacing: 0,
       leading: Builder(
         builder: (context) => IconButton(
-          icon: const Icon(Icons.menu, color: JalideTheme.textMuted, size: 20),
+          icon: Icon(Icons.menu, color: _theme.textMuted, size: 20),
           onPressed: () => Scaffold.of(context).openDrawer(),
         ),
       ),
@@ -932,8 +957,8 @@ class _EditorScreenState extends State<EditorScreen> {
             Container(
               width: 8,
               height: 8,
-              decoration: const BoxDecoration(
-                color: JalideTheme.accent,
+              decoration: BoxDecoration(
+                color: _theme.accent,
                 shape: BoxShape.circle,
               ),
             ),
@@ -948,8 +973,8 @@ class _EditorScreenState extends State<EditorScreen> {
                       Expanded(
                         child: Text(
                           _fileName,
-                          style: const TextStyle(
-                            color: JalideTheme.textPri,
+                          style: TextStyle(
+                            color: _theme.textPri,
                             fontFamily: 'monospace',
                             fontWeight: FontWeight.bold,
                             fontSize: 14,
@@ -964,8 +989,8 @@ class _EditorScreenState extends State<EditorScreen> {
                         Container(
                           width: 6,
                           height: 6,
-                          decoration: const BoxDecoration(
-                            color: JalideTheme.accent,
+                          decoration: BoxDecoration(
+                            color: _theme.accent,
                             shape: BoxShape.circle,
                           ),
                         ),
@@ -975,8 +1000,8 @@ class _EditorScreenState extends State<EditorScreen> {
                   if (_activePath != null)
                     Text(
                       _activePath!,
-                      style: const TextStyle(
-                        color: JalideTheme.textMuted,
+                      style: TextStyle(
+                        color: _theme.textMuted,
                         fontSize: 9,
                         fontFamily: 'monospace',
                       ),
@@ -993,7 +1018,7 @@ class _EditorScreenState extends State<EditorScreen> {
         IconButton(
           onPressed: _openFile,
           icon: const Icon(Icons.folder_open_outlined, size: 20),
-          color: JalideTheme.textMuted,
+          color: _theme.textMuted,
           tooltip: 'Abrir arquivo',
         ),
         IconButton(
@@ -1001,21 +1026,20 @@ class _EditorScreenState extends State<EditorScreen> {
           icon: Icon(
             Icons.save_outlined,
             size: 20,
-            color: _activeHasUnsavedChanges
-                ? JalideTheme.accent
-                : JalideTheme.textMuted,
+            color: _activeHasUnsavedChanges ? _theme.accent : _theme.textMuted,
           ),
           tooltip: 'Salvar',
         ),
         PopupMenuButton<String>(
-          color: JalideTheme.surface,
+          color: _theme.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(8),
-            side: const BorderSide(color: JalideTheme.border),
+            side: BorderSide(color: _theme.border),
           ),
           onSelected: (v) async {
             if (v == 'new') _createNewTab();
             if (v == 'save_as') await _saveFileAs();
+            if (v == 'theme') _showThemeDialog();
             if (v == 'zoom_in') _updateFontSize(_fontSize + 2);
             if (v == 'zoom_out') _updateFontSize(_fontSize - 2);
           },
@@ -1025,17 +1049,15 @@ class _EditorScreenState extends State<EditorScreen> {
             const PopupMenuDivider(),
             _menuItem('zoom_in', 'Aumentar fonte', Icons.zoom_in),
             _menuItem('zoom_out', 'Diminuir fonte', Icons.zoom_out),
+            const PopupMenuDivider(),
+            _menuItem('theme', 'Mudar Tema', Icons.palette_outlined),
           ],
-          icon: const Icon(
-            Icons.more_vert,
-            color: JalideTheme.textMuted,
-            size: 20,
-          ),
+          icon: Icon(Icons.more_vert, color: _theme.textMuted, size: 20),
         ),
       ],
       bottom: PreferredSize(
         preferredSize: const Size.fromHeight(1),
-        child: Container(height: 1, color: JalideTheme.border),
+        child: Container(height: 1, color: _theme.border),
       ),
     );
   }
@@ -1045,12 +1067,12 @@ class _EditorScreenState extends State<EditorScreen> {
       value: val,
       child: Row(
         children: [
-          Icon(icon, size: 16, color: JalideTheme.textMuted),
+          Icon(icon, size: 16, color: _theme.textMuted),
           const SizedBox(width: 10),
           Text(
             label,
-            style: const TextStyle(
-              color: JalideTheme.textPri,
+            style: TextStyle(
+              color: _theme.textPri,
               fontFamily: 'monospace',
               fontSize: 12,
             ),
@@ -1099,21 +1121,21 @@ class _EditorScreenState extends State<EditorScreen> {
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
-          backgroundColor: JalideTheme.surface,
-          title: const Text(
+          backgroundColor: _theme.surface,
+          title: Text(
             'Alterações não salvas',
-            style: TextStyle(color: JalideTheme.textPri),
+            style: TextStyle(color: _theme.textPri),
           ),
-          content: const Text(
+          content: Text(
             'Deseja fechar esta aba sem salvar as alterações?',
-            style: TextStyle(color: JalideTheme.textMuted),
+            style: TextStyle(color: _theme.textMuted),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text(
+              child: Text(
                 'Cancelar',
-                style: TextStyle(color: JalideTheme.textMuted),
+                style: TextStyle(color: _theme.textMuted),
               ),
             ),
             TextButton(
@@ -1134,7 +1156,38 @@ class _EditorScreenState extends State<EditorScreen> {
     }
   }
 
-
+  void _showThemeDialog() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        final provider = ThemeProvider.of(context);
+        return AlertDialog(
+          backgroundColor: _theme.surface,
+          title: Text('Selecionar Tema', style: TextStyle(color: _theme.textPri)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: ThemeType.values.map((type) {
+              return RadioListTile<ThemeType>(
+                title: Text(
+                  type.name.toUpperCase(),
+                  style: TextStyle(color: _theme.textPri, fontSize: 14),
+                ),
+                value: type,
+                groupValue: provider.themeType,
+                activeColor: _theme.accent,
+                onChanged: (ThemeType? value) {
+                  if (value != null) {
+                    provider.setTheme(value);
+                    Navigator.pop(context);
+                  }
+                },
+              );
+            }).toList(),
+          ),
+        );
+      },
+    );
+  }
 
   Widget _buildEditor() {
     if (_activeTabIndex == -1) {
@@ -1142,32 +1195,52 @@ class _EditorScreenState extends State<EditorScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.code_rounded, size: 64, color: JalideTheme.textMuted.withValues(alpha: 0.3)),
+            Icon(
+              Icons.code_rounded,
+              size: 64,
+              color: _theme.textMuted.withValues(alpha: 0.3),
+            ),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               'JALIDE Editor',
-              style: TextStyle(color: JalideTheme.textPri, fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: 2),
+              style: TextStyle(
+                color: _theme.textPri,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 2,
+              ),
             ),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               'Nenhum arquivo aberto',
-              style: TextStyle(color: JalideTheme.textMuted, fontSize: 14),
+              style: TextStyle(color: _theme.textMuted, fontSize: 14),
             ),
           ],
         ),
       );
     }
     return Container(
-      color: JalideTheme.bg,
+      color: _theme.bg,
       child: CodeTheme(
         data: CodeThemeData(
-          keywordStyle: TextStyle(color: JalideTheme.kwColor),
-          quoteStyle: TextStyle(color: JalideTheme.strColor),
-          commentStyle: TextStyle(
-            color: JalideTheme.commentColor,
-            fontStyle: FontStyle.italic,
-          ),
-          variableStyle: TextStyle(color: JalideTheme.varColor),
+          styles: {
+            'root': TextStyle(color: _theme.textPri, backgroundColor: _theme.bg),
+            'keyword': TextStyle(color: _theme.kwColor),
+            'string': TextStyle(color: _theme.strColor),
+            'comment':
+                TextStyle(color: _theme.commentColor, fontStyle: FontStyle.italic),
+            'number': TextStyle(color: _theme.numColor),
+            'function': TextStyle(color: _theme.fnColor),
+            'title': TextStyle(color: _theme.fnColor),
+            'params': TextStyle(color: _theme.varColor),
+            'variable': TextStyle(color: _theme.varColor),
+            'attr': TextStyle(color: _theme.varColor),
+            'built_in': TextStyle(color: _theme.kwColor),
+            'literal': TextStyle(color: _theme.numColor),
+            'type': TextStyle(color: _theme.fnColor),
+            'class': TextStyle(color: _theme.fnColor),
+            'tag': TextStyle(color: _theme.kwColor),
+          },
         ),
         child: CodeField(
           key: ValueKey(_activeTabIndex),
@@ -1181,12 +1254,12 @@ class _EditorScreenState extends State<EditorScreen> {
             fontFamily: 'monospace',
             fontSize: _fontSize,
             height: 1.5,
-            color: JalideTheme.textPri,
+            color: _theme.textPri,
           ),
-          cursorColor: JalideTheme.accent,
+          cursorColor: _theme.accent,
           gutterStyle: GutterStyle(
             textStyle: TextStyle(
-              color: JalideTheme.textMuted,
+              color: _theme.textMuted,
               fontFamily: 'monospace',
               fontSize: _fontSize - 3 > 8 ? _fontSize - 3 : 8,
             ),
@@ -1196,6 +1269,4 @@ class _EditorScreenState extends State<EditorScreen> {
       ),
     );
   }
-
-
 }

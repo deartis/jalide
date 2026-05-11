@@ -29,26 +29,32 @@ class FileExplorerDrawer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final _theme = ThemeProvider.of(context).current;
     return Drawer(
-      backgroundColor: JalideTheme.bg,
+      backgroundColor: _theme.bg,
       child: Column(
         children: [
           Container(
             padding: const EdgeInsets.fromLTRB(16, 60, 8, 20),
-            color: JalideTheme.surface,
+            color: _theme.surface,
             child: Row(
               children: [
-                const Icon(
+                Icon(
                   Icons.folder_copy_outlined,
-                  color: JalideTheme.accent,
+                  color: _theme.accent,
                   size: 22,
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    projectPath == null ? 'EXPLORER' : FileUtils.getDisplayName(projectPath!, uppercase: true),
-                    style: const TextStyle(
-                      color: JalideTheme.textPri,
+                    projectPath == null
+                        ? 'EXPLORER'
+                        : FileUtils.getDisplayName(
+                            projectPath!,
+                            uppercase: true,
+                          ),
+                    style: TextStyle(
+                      color: _theme.textPri,
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
                       letterSpacing: 1,
@@ -60,9 +66,9 @@ class FileExplorerDrawer extends StatelessWidget {
                 if (projectPath != null) ...[
                   IconButton(
                     onPressed: onCreateFile,
-                    icon: const Icon(
+                    icon: Icon(
                       Icons.note_add_outlined,
-                      color: JalideTheme.textMuted,
+                      color: _theme.textMuted,
                       size: 20,
                     ),
                     tooltip: 'Novo Arquivo',
@@ -72,9 +78,9 @@ class FileExplorerDrawer extends StatelessWidget {
                   const SizedBox(width: 8),
                   IconButton(
                     onPressed: onCreateFolder,
-                    icon: const Icon(
+                    icon: Icon(
                       Icons.create_new_folder_outlined,
-                      color: JalideTheme.textMuted,
+                      color: _theme.textMuted,
                       size: 20,
                     ),
                     tooltip: 'Nova Pasta',
@@ -85,9 +91,9 @@ class FileExplorerDrawer extends StatelessWidget {
                 ],
                 IconButton(
                   onPressed: onPickFolder,
-                  icon: const Icon(
+                  icon: Icon(
                     Icons.folder_open_outlined,
-                    color: JalideTheme.textMuted,
+                    color: _theme.textMuted,
                     size: 20,
                   ),
                   tooltip: 'Selecionar pasta projeto',
@@ -100,10 +106,12 @@ class FileExplorerDrawer extends StatelessWidget {
 
           Expanded(
             child: projectPath == null
-                ? _buildEmptyState()
+                ? _buildEmptyState(_theme)
                 : ListView(
                     padding: const EdgeInsets.symmetric(vertical: 8),
-                    children: projectFiles.map((item) => _buildExplorerNode(context, item)).toList(),
+                    children: projectFiles
+                        .map((item) => _buildExplorerNode(context, item))
+                        .toList(),
                   ),
           ),
         ],
@@ -111,7 +119,7 @@ class FileExplorerDrawer extends StatelessWidget {
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(JalideThemeVariant _theme) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -119,21 +127,18 @@ class FileExplorerDrawer extends StatelessWidget {
           Icon(
             Icons.folder_open,
             size: 48,
-            color: JalideTheme.textMuted.withValues(alpha: 0.3),
+            color: _theme.textMuted.withValues(alpha: 0.3),
           ),
           const SizedBox(height: 16),
-          const Text(
+          Text(
             'Nenhum projeto aberto',
-            style: TextStyle(
-              color: JalideTheme.textMuted,
-              fontSize: 12,
-            ),
+            style: TextStyle(color: _theme.textMuted, fontSize: 12),
           ),
           const SizedBox(height: 12),
           ElevatedButton.icon(
             onPressed: onPickFolder,
             style: ElevatedButton.styleFrom(
-              backgroundColor: JalideTheme.accent,
+              backgroundColor: _theme.accent,
               foregroundColor: Colors.black,
               textStyle: const TextStyle(fontWeight: FontWeight.bold),
             ),
@@ -159,6 +164,7 @@ class FileExplorerDrawer extends StatelessWidget {
   }
 
   Widget _buildExplorerNode(BuildContext context, Map<String, dynamic> item) {
+    final _theme = ThemeProvider.of(context).current;
     final name = item['name'] as String;
     final path = item['path'] as String;
     final isDir = item['isDir'] as bool;
@@ -172,49 +178,55 @@ class FileExplorerDrawer extends StatelessWidget {
         child: ExpansionTile(
           key: PageStorageKey(path),
           tilePadding: const EdgeInsets.symmetric(horizontal: 16),
-          leading: const Icon(
-            Icons.folder_rounded,
-            color: JalideTheme.accent,
-            size: 18,
-          ),
+          leading: Icon(Icons.folder_rounded, color: _theme.accent, size: 18),
           title: Text(
             name,
-            style: const TextStyle(
-              color: JalideTheme.textPri,
+            style: TextStyle(
+              color: _theme.textPri,
               fontSize: 13,
               fontFamily: 'sans-serif',
             ),
           ),
-          iconColor: JalideTheme.accent,
-          collapsedIconColor: JalideTheme.textMuted,
+          iconColor: _theme.accent,
+          collapsedIconColor: _theme.textMuted,
           childrenPadding: const EdgeInsets.only(left: 12),
           children: [
             FutureBuilder<List<Map<String, dynamic>>>(
-              future: isSaf 
-                ? termuxChannel.invokeMethod('listSafDirectory', {'uri': path}).then((res) => 
-                    (res as List).map((f) => {
-                      'name': f['name'] as String,
-                      'path': f['uri'] as String,
-                      'isDir': f['isDir'] as bool,
-                      'isSaf': true,
-                    }).toList()
-                  )
-                : Directory(path).list().toList().then((list) {
-                    list.sort((a, b) {
-                      if (a is Directory && b is! Directory) return -1;
-                      if (a is! Directory && b is Directory) return 1;
-                      return a.path.compareTo(b.path);
-                    });
-                    return list.map((e) => {
-                      'name': p.basename(e.path),
-                      'path': e.path,
-                      'isDir': e is Directory,
-                      'isSaf': false,
-                    }).toList();
-                  }),
+              future: isSaf
+                  ? termuxChannel
+                        .invokeMethod('listSafDirectory', {'uri': path})
+                        .then(
+                          (res) => (res as List)
+                              .map(
+                                (f) => {
+                                  'name': f['name'] as String,
+                                  'path': f['uri'] as String,
+                                  'isDir': f['isDir'] as bool,
+                                  'isSaf': true,
+                                },
+                              )
+                              .toList(),
+                        )
+                  : Directory(path).list().toList().then((list) {
+                      list.sort((a, b) {
+                        if (a is Directory && b is! Directory) return -1;
+                        if (a is! Directory && b is Directory) return 1;
+                        return a.path.compareTo(b.path);
+                      });
+                      return list
+                          .map(
+                            (e) => {
+                              'name': p.basename(e.path),
+                              'path': e.path,
+                              'isDir': e is Directory,
+                              'isSaf': false,
+                            },
+                          )
+                          .toList();
+                    }),
               builder: (context, snapshot) {
                 if (!snapshot.hasData) {
-                  return const Padding(
+                  return Padding(
                     padding: EdgeInsets.all(8.0),
                     child: Center(
                       child: SizedBox(
@@ -222,14 +234,16 @@ class FileExplorerDrawer extends StatelessWidget {
                         height: 16,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          color: JalideTheme.accent,
+                          color: _theme.accent,
                         ),
                       ),
                     ),
                   );
                 }
                 return Column(
-                  children: snapshot.data!.map((i) => _buildExplorerNode(context, i)).toList(),
+                  children: snapshot.data!
+                      .map((i) => _buildExplorerNode(context, i))
+                      .toList(),
                 );
               },
             ),
@@ -241,11 +255,15 @@ class FileExplorerDrawer extends StatelessWidget {
     return ListTile(
       dense: true,
       contentPadding: const EdgeInsets.only(left: 16, right: 16),
-      leading: Icon(FileUtils.iconForFile(name), color: FileUtils.colorForFile(name), size: 18),
+      leading: Icon(
+        FileUtils.iconForFile(name),
+        color: FileUtils.colorForFile(name, theme: _theme),
+        size: 18,
+      ),
       title: Text(
         name,
-        style: const TextStyle(
-          color: JalideTheme.textPri,
+        style: TextStyle(
+          color: _theme.textPri,
           fontSize: 13,
           fontFamily: 'monospace',
         ),

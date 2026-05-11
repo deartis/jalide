@@ -5,19 +5,16 @@ class AuxKeyboard extends StatelessWidget {
   final List<String> auxKeys;
   final Function(String) onKeyTap;
 
-  const AuxKeyboard({
-    super.key,
-    required this.auxKeys,
-    required this.onKeyTap,
-  });
+  const AuxKeyboard({super.key, required this.auxKeys, required this.onKeyTap});
 
   @override
   Widget build(BuildContext context) {
+    final _theme = ThemeProvider.of(context).current;
     return Container(
       height: 40,
-      decoration: const BoxDecoration(
-        color: JalideTheme.surface,
-        border: Border(top: BorderSide(color: JalideTheme.border)),
+      decoration: BoxDecoration(
+        color: _theme.surface,
+        border: Border(top: BorderSide(color: _theme.border)),
       ),
       child: ListView(
         scrollDirection: Axis.horizontal,
@@ -31,10 +28,10 @@ class AuxKeyboard extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
               decoration: BoxDecoration(
                 color: isSpecial
-                    ? JalideTheme.accent.withValues(alpha: 0.12)
+                    ? _theme.accent.withValues(alpha: 0.12)
                     : const Color(0xFF1A1A20),
                 border: Border.all(
-                  color: isSpecial ? JalideTheme.accent : JalideTheme.border,
+                  color: isSpecial ? _theme.accent : _theme.border,
                   width: isSpecial ? 1 : 0.5,
                 ),
                 borderRadius: BorderRadius.circular(5),
@@ -42,7 +39,7 @@ class AuxKeyboard extends StatelessWidget {
               child: Text(
                 key,
                 style: TextStyle(
-                  color: isSpecial ? JalideTheme.accent : JalideTheme.textMuted,
+                  color: isSpecial ? _theme.accent : _theme.textMuted,
                   fontFamily: 'monospace',
                   fontSize: 11,
                   fontWeight: isSpecial ? FontWeight.bold : FontWeight.normal,
