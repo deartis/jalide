@@ -252,8 +252,9 @@ class _EditorScreenState extends State<EditorScreen> {
       'focusNode': FocusNode(),
     };
     newTab['controller'] = _createController('', javascript, () {
-      if (!(newTab['hasUnsavedChanges'] as bool)) {
-        setState(() => newTab['hasUnsavedChanges'] = true);
+      final isChanged = newTab['controller'].text != '';
+      if (newTab['hasUnsavedChanges'] != isChanged) {
+        setState(() => newTab['hasUnsavedChanges'] = isChanged);
       }
     });
 
@@ -319,9 +320,11 @@ class _EditorScreenState extends State<EditorScreen> {
         'hasUnsavedChanges': false,
         'focusNode': FocusNode(),
       };
+      newTab['initialContent'] = content;
       newTab['controller'] = _createController(content, _langForPath(path), () {
-        if (!(newTab['hasUnsavedChanges'] as bool)) {
-          setState(() => newTab['hasUnsavedChanges'] = true);
+        final isChanged = newTab['controller'].text != newTab['initialContent'];
+        if (newTab['hasUnsavedChanges'] != isChanged) {
+          setState(() => newTab['hasUnsavedChanges'] = isChanged);
         }
       });
 
@@ -438,12 +441,14 @@ class _EditorScreenState extends State<EditorScreen> {
     debugPrint('JALIDE_SAVE_AS_PATH: $finalPath');
 
     try {
+      final content = _activeController.text;
       final file = File(finalPath);
-      await file.writeAsString(_activeController.text);
+      await file.writeAsString(content);
       setState(() {
         _openTabs[_activeTabIndex]['path'] = finalPath;
         _openTabs[_activeTabIndex]['name'] = p.basename(finalPath);
         _openTabs[_activeTabIndex]['hasUnsavedChanges'] = false;
+        _openTabs[_activeTabIndex]['initialContent'] = content;
         _activeController.language = _langForPath(finalPath);
       });
       // Atualiza o explorer se o arquivo foi salvo na pasta do projeto
