@@ -11,24 +11,15 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/file_service.dart';
+import '../theme/jalide_theme.dart';
+import '../widgets/aux_keyboard.dart';
+import '../widgets/terminal_panel.dart';
+import '../widgets/status_bar.dart';
+import '../widgets/file_explorer.dart';
+import '../widgets/editor_tabs_bar.dart';
+import '../utils/file_utils.dart';
 
 
-// Paleta da IDE — inspirado no mockup
-class JalideTheme {
-  static const bg = Color(0xFF0D0D0F);
-  static const surface = Color(0xFF111114);
-  static const border = Color(0xFF1E1E24);
-  static const accent = Color(0xFFE07B1A); // laranja JALIDE
-  static const textPri = Color(0xFFCDD6F4);
-  static const textMuted = Color(0xFF555566);
-
-  static const kwColor = Color(0xFF7AA2F7);
-  static const strColor = Color(0xFF9ECE6A);
-  static const commentColor = Color(0xFF4A4A5A);
-  static const varColor = Color(0xFF9D7CD8);
-  static const numColor = Color(0xFFFF9E64);
-  static const fnColor = Color(0xFF82AAFF);
-}
 
 class EditorScreen extends StatefulWidget {
   const EditorScreen({super.key});
@@ -266,7 +257,7 @@ class _EditorScreenState extends State<EditorScreen> {
 
   String get _fileName {
     if (_activeTabIndex == -1) return 'JALIDE';
-    return _activePath == null ? 'untitled.js' : _getDisplayName(_activePath!);
+    return _activePath == null ? 'untitled.js' : FileUtils.getDisplayName(_activePath!);
   }
 
   String get _languageName {
@@ -316,7 +307,7 @@ class _EditorScreenState extends State<EditorScreen> {
     if (existing == -1) {
       final Map<String, dynamic> newTab = {
         'path': path,
-        'name': _getDisplayName(path),
+        'name': FileUtils.getDisplayName(path),
         'hasUnsavedChanges': false,
         'focusNode': FocusNode(),
       };
@@ -869,10 +860,28 @@ class _EditorScreenState extends State<EditorScreen> {
         key: _scaffoldKey,
         backgroundColor: JalideTheme.bg,
         appBar: _buildAppBar(),
-        drawer: _buildFileExplorer(),
+        drawer: FileExplorerDrawer(
+          projectPath: _projectPath,
+          projectFiles: _projectFiles,
+          onFileTap: _openFileFromExplorer,
+          onPickFolder: _pickProjectFolder,
+          onOpenTermux: _openTermuxWorkspace,
+          onCreateFile: () => _showCreateDialog(true),
+          onCreateFolder: () => _showCreateDialog(false),
+          termuxChannel: _termuxChannel,
+        ),
         body: Column(
           children: [
-            if (_openTabs.isNotEmpty) _buildTabBar(),
+            if (_openTabs.isNotEmpty) 
+              EditorTabsBar(
+                tabs: _openTabs,
+                activeIndex: _activeTabIndex,
+                onTabTap: (i) {
+                  setState(() => _activeTabIndex = i);
+                  _saveActiveFilePreference(_openTabs[i]['path'] as String?);
+                },
+                onCloseTab: _closeTab,
+              ),
             Expanded(
               child: Stack(
                 children: [
@@ -882,13 +891,23 @@ class _EditorScreenState extends State<EditorScreen> {
                       left: 0,
                       right: 0,
                       bottom: 0,
-                      child: _buildTerminalPanel(),
+                      child: TerminalPanel(
+                        terminalLogs: _terminalLogs,
+                        onClose: () => setState(() => _isTerminalVisible = false),
+                      ),
                     ),
                 ],
               ),
             ),
-            _buildAuxKeyboard(),
-            _buildStatusBar(),
+            AuxKeyboard(
+              auxKeys: _auxKeys,
+              onKeyTap: _insertSnippet,
+            ),
+            StatusBar(
+              languageName: _languageName,
+              hasUnsavedChanges: _activeHasUnsavedChanges,
+              onTerminalToggle: () => setState(() => _isTerminalVisible = !_isTerminalVisible),
+            ),
           ],
         ),
       ),
@@ -1115,79 +1134,7 @@ class _EditorScreenState extends State<EditorScreen> {
     }
   }
 
-  Widget _buildTabBar() {
-    return Container(
-      height: 32,
-      decoration: const BoxDecoration(
-        color: Color(0xFF0F0F12),
-        border: Border(bottom: BorderSide(color: JalideTheme.border)),
-      ),
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        itemCount: _openTabs.length,
-        itemBuilder: (_, i) {
-          final isActive = i == _activeTabIndex;
-          return GestureDetector(
-            onTap: () {
-              setState(() => _activeTabIndex = i);
-              _saveActiveFilePreference(_openTabs[i]['path'] as String?);
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              decoration: BoxDecoration(
-                color: isActive ? JalideTheme.surface : Colors.transparent,
-                border: Border(
-                  right: const BorderSide(color: JalideTheme.border),
-                  bottom: BorderSide(
-                    color: isActive ? JalideTheme.accent : Colors.transparent,
-                    width: 2,
-                  ),
-                ),
-              ),
-              child: Row(
-                children: [
-                  if (isActive)
-                    Container(
-                      width: 5,
-                      height: 5,
-                      margin: const EdgeInsets.only(right: 6),
-                      decoration: const BoxDecoration(
-                        color: JalideTheme.accent,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  Text(
-                    _openTabs[i]['name']!,
-                    style: TextStyle(
-                      color: isActive
-                          ? JalideTheme.textPri
-                          : JalideTheme.textMuted,
-                      fontFamily: 'monospace',
-                      fontSize: 10,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  GestureDetector(
-                    onTap: () => _closeTab(i),
-                    child: Padding(
-                      padding: const EdgeInsets.only(left: 4.0),
-                      child: Icon(
-                        Icons.close,
-                        size: 12,
-                        color: isActive
-                            ? JalideTheme.textPri
-                            : JalideTheme.textMuted,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
+
 
   Widget _buildEditor() {
     if (_activeTabIndex == -1) {
@@ -1250,466 +1197,5 @@ class _EditorScreenState extends State<EditorScreen> {
     );
   }
 
-  Widget _buildTerminalPanel() {
-    final keyboardVisible = MediaQuery.of(context).viewInsets.bottom > 0;
 
-    return Container(
-      height: keyboardVisible ? 200 : 160,
-      margin: keyboardVisible ? const EdgeInsets.all(8) : EdgeInsets.zero,
-      decoration: BoxDecoration(
-        color: const Color(0xEE0D0D0F), // Semi-transparente
-        borderRadius: keyboardVisible
-            ? BorderRadius.circular(12)
-            : BorderRadius.zero,
-        border: Border(
-          top: BorderSide(color: JalideTheme.accent.withValues(alpha: 0.3)),
-          left: keyboardVisible
-              ? BorderSide(color: JalideTheme.accent.withValues(alpha: 0.3))
-              : BorderSide.none,
-          right: keyboardVisible
-              ? BorderSide(color: JalideTheme.accent.withValues(alpha: 0.3))
-              : BorderSide.none,
-          bottom: keyboardVisible
-              ? BorderSide(color: JalideTheme.accent.withValues(alpha: 0.3))
-              : BorderSide.none,
-        ),
-        boxShadow: [
-          if (keyboardVisible)
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.5),
-              blurRadius: 10,
-              offset: const Offset(0, -2),
-            ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: keyboardVisible
-            ? BorderRadius.circular(12)
-            : BorderRadius.zero,
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              color: JalideTheme.accent.withValues(alpha: 0.1),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.terminal_outlined,
-                    size: 14,
-                    color: JalideTheme.accent,
-                  ),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'TERMINAL',
-                    style: TextStyle(
-                      color: JalideTheme.accent,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1,
-                    ),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    onPressed: () => setState(() => _isTerminalVisible = false),
-                    icon: const Icon(
-                      Icons.close,
-                      size: 14,
-                      color: JalideTheme.textMuted,
-                    ),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.all(10),
-                itemCount: _terminalLogs.length,
-                itemBuilder: (_, i) => Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Text(
-                    '> ${_terminalLogs[i]}',
-                    style: const TextStyle(
-                      color: Color(0xFF9ECE6A),
-                      fontFamily: 'monospace',
-                      fontSize: 11,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // Teclado auxiliar com teclas de programação — ESSENCIAL em mobile
-  Widget _buildAuxKeyboard() {
-    return Container(
-      height: 40,
-      decoration: const BoxDecoration(
-        color: JalideTheme.surface,
-        border: Border(top: BorderSide(color: JalideTheme.border)),
-      ),
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        children: _auxKeys.map((key) {
-          final isSpecial = key == 'Tab';
-          return GestureDetector(
-            onTap: () => _insertSnippet(key),
-            child: Container(
-              margin: const EdgeInsets.only(right: 6),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-              decoration: BoxDecoration(
-                color: isSpecial
-                    ? JalideTheme.accent.withValues(alpha: 0.12)
-                    : const Color(0xFF1A1A20),
-                border: Border.all(
-                  color: isSpecial ? JalideTheme.accent : JalideTheme.border,
-                  width: isSpecial ? 1 : 0.5,
-                ),
-                borderRadius: BorderRadius.circular(5),
-              ),
-              child: Text(
-                key,
-                style: TextStyle(
-                  color: isSpecial ? JalideTheme.accent : JalideTheme.textMuted,
-                  fontFamily: 'monospace',
-                  fontSize: 11,
-                  fontWeight: isSpecial ? FontWeight.bold : FontWeight.normal,
-                ),
-              ),
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-
-  Widget _buildStatusBar() {
-    return Container(
-      color: JalideTheme.accent,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      child: Row(
-        children: [
-          GestureDetector(
-            onTap: () =>
-                setState(() => _isTerminalVisible = !_isTerminalVisible),
-            child: _sbChip('⬡ Terminal'),
-          ),
-          const SizedBox(width: 12),
-          _sbChip(_languageName),
-          const SizedBox(width: 12),
-          _sbChip('UTF-8'),
-          const Spacer(),
-          if (_activeHasUnsavedChanges)
-            const Text(
-              '●',
-              style: TextStyle(color: Color(0xFF1A0A00), fontSize: 10),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _sbChip(String text) => Text(
-    text,
-    style: const TextStyle(
-      color: Color(0xFF1A0A00),
-      fontFamily: 'monospace',
-      fontSize: 10,
-      fontWeight: FontWeight.bold,
-    ),
-  );
-
-  IconData _iconForFile(String name) {
-    final ext = p.extension(name).toLowerCase();
-    switch (ext) {
-      case '.js':
-      case '.jsx':
-      case '.mjs':
-        return Icons.javascript;
-      case '.json':
-        return Icons.data_object;
-      case '.md':
-        return Icons.article_outlined;
-      case '.html':
-        return Icons.html;
-      case '.css':
-        return Icons.css;
-      case '.png':
-      case '.jpg':
-      case '.svg':
-      case '.ico':
-        return Icons.image_outlined;
-      default:
-        return Icons.description_outlined;
-    }
-  }
-
-  Color _colorForFile(String name) {
-    final ext = p.extension(name).toLowerCase();
-    switch (ext) {
-      case '.js':
-      case '.jsx':
-      case '.mjs':
-        return const Color(0xFFE8D44D); // Yellow JS
-      case '.json':
-        return const Color(0xFF8BC34A); // Green JSON
-      case '.md':
-        return const Color(0xFF29B6F6); // Blue Markdown
-      case '.html':
-        return const Color(0xFFFF9800); // Orange HTML
-      case '.css':
-        return const Color(0xFF03A9F4); // Blue CSS
-      case '.png':
-      case '.jpg':
-      case '.svg':
-      case '.ico':
-        return const Color(0xFFAB47BC); // Purple Image
-      default:
-        return JalideTheme.textMuted;
-    }
-  }
-
-  String _getDisplayName(String path, {bool uppercase = false}) {
-    String name;
-    if (path.startsWith('content://')) {
-      try {
-        final decoded = Uri.decodeFull(path);
-        final parts = decoded.split('/');
-        name = parts.lastWhere((s) => s.isNotEmpty, orElse: () => 'PROJETO');
-      } catch (e) {
-        name = 'ARQUIVO';
-      }
-    } else {
-      name = p.basename(path);
-    }
-    return uppercase ? name.toUpperCase() : name;
-  }
-
-  Widget _buildExplorerNode(Map<String, dynamic> item) {
-    final name = item['name'] as String;
-    final path = item['path'] as String;
-    final isDir = item['isDir'] as bool;
-    final isSaf = item['isSaf'] as bool;
-
-    if (isDir) {
-      if (name.startsWith('.')) return const SizedBox();
-
-      return Theme(
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
-          key: PageStorageKey(path),
-          tilePadding: const EdgeInsets.symmetric(horizontal: 16),
-          leading: const Icon(
-            Icons.folder_rounded,
-            color: JalideTheme.accent,
-            size: 18,
-          ),
-          title: Text(
-            name,
-            style: const TextStyle(
-              color: JalideTheme.textPri,
-              fontSize: 13,
-              fontFamily: 'sans-serif',
-            ),
-          ),
-          iconColor: JalideTheme.accent,
-          collapsedIconColor: JalideTheme.textMuted,
-          childrenPadding: const EdgeInsets.only(left: 12),
-          children: [
-            FutureBuilder<List<Map<String, dynamic>>>(
-              future: isSaf 
-                ? _termuxChannel.invokeMethod('listSafDirectory', {'uri': path}).then((res) => 
-                    (res as List).map((f) => {
-                      'name': f['name'] as String,
-                      'path': f['uri'] as String,
-                      'isDir': f['isDir'] as bool,
-                      'isSaf': true,
-                    }).toList()
-                  )
-                : Directory(path).list().toList().then((list) {
-                    list.sort((a, b) {
-                      if (a is Directory && b is! Directory) return -1;
-                      if (a is! Directory && b is Directory) return 1;
-                      return a.path.compareTo(b.path);
-                    });
-                    return list.map((e) => {
-                      'name': p.basename(e.path),
-                      'path': e.path,
-                      'isDir': e is Directory,
-                      'isSaf': false,
-                    }).toList();
-                  }),
-              builder: (context, snapshot) {
-                if (!snapshot.hasData) {
-                  return const Padding(
-                    padding: EdgeInsets.all(8.0),
-                    child: Center(
-                      child: SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: JalideTheme.accent,
-                        ),
-                      ),
-                    ),
-                  );
-                }
-                return Column(
-                  children: snapshot.data!.map(_buildExplorerNode).toList(),
-                );
-              },
-            ),
-          ],
-        ),
-      );
-    }
-
-    return ListTile(
-      dense: true,
-      contentPadding: const EdgeInsets.only(left: 16, right: 16),
-      leading: Icon(_iconForFile(name), color: _colorForFile(name), size: 18),
-      title: Text(
-        name,
-        style: const TextStyle(
-          color: JalideTheme.textPri,
-          fontSize: 13,
-          fontFamily: 'monospace',
-        ),
-      ),
-      onTap: () => _openFileFromExplorer(path),
-    );
-  }
-
-  Widget _buildFileExplorer() {
-    return Drawer(
-      backgroundColor: JalideTheme.bg,
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.fromLTRB(16, 60, 8, 20),
-            color: JalideTheme.surface,
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.folder_copy_outlined,
-                  color: JalideTheme.accent,
-                  size: 22,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    _projectPath == null ? 'EXPLORER' : _getDisplayName(_projectPath!, uppercase: true),
-                    style: const TextStyle(
-                      color: JalideTheme.textPri,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                      letterSpacing: 1,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
-                  ),
-                ),
-                if (_projectPath != null) ...[
-                  IconButton(
-                    onPressed: () => _showCreateDialog(true),
-                    icon: const Icon(
-                      Icons.note_add_outlined,
-                      color: JalideTheme.textMuted,
-                      size: 20,
-                    ),
-                    tooltip: 'Novo Arquivo',
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    onPressed: () => _showCreateDialog(false),
-                    icon: const Icon(
-                      Icons.create_new_folder_outlined,
-                      color: JalideTheme.textMuted,
-                      size: 20,
-                    ),
-                    tooltip: 'Nova Pasta',
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                  ),
-                  const SizedBox(width: 8),
-                ],
-                IconButton(
-                  onPressed: _pickProjectFolder,
-                  icon: const Icon(
-                    Icons.folder_open_outlined,
-                    color: JalideTheme.textMuted,
-                    size: 20,
-                  ),
-                  tooltip: 'Selecionar pasta projeto',
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                ),
-              ],
-            ),
-          ),
-
-          Expanded(
-            child: _projectPath == null
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.folder_open,
-                          size: 48,
-                          color: JalideTheme.textMuted.withValues(alpha: 0.3),
-                        ),
-                        const SizedBox(height: 16),
-                        const Text(
-                          'Nenhum projeto aberto',
-                          style: TextStyle(
-                            color: JalideTheme.textMuted,
-                            fontSize: 12,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        ElevatedButton.icon(
-                          onPressed: _pickProjectFolder,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: JalideTheme.accent,
-                            foregroundColor: Colors.black,
-                            textStyle: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          icon: const Icon(Icons.folder_open_outlined, size: 16),
-                          label: const Text('ABRIR PASTA'),
-                        ),
-                        const SizedBox(height: 10),
-                        if (Platform.isAndroid)
-                          ElevatedButton.icon(
-                            onPressed: _openTermuxWorkspace,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF1B3A1B),
-                              foregroundColor: const Color(0xFF4CAF50),
-                              side: const BorderSide(color: Color(0xFF4CAF50), width: 1),
-                              textStyle: const TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            icon: const Icon(Icons.terminal, size: 16),
-                            label: const Text('ABRIR DO TERMUX'),
-                          ),
-                      ],
-                    ),
-                  )
-                : ListView(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    children: _projectFiles.map(_buildExplorerNode).toList(),
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
 }
