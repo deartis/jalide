@@ -17,6 +17,13 @@ dependencies:
   path_provider: ^2.1.5
   permission_handler: ^11.3.1
   provider: ^6.1.2
+  # Terminal real (PTY nativo)
+  flutter_pty: ^0.4.0
+  xterm: ^4.0.0
+  # SSH / SFTP remoto
+  dartssh2: ^2.9.0
+  # Armazenamento seguro para credenciais SSH
+  flutter_secure_storage: ^9.0.0
 
 dev_dependencies:
   flutter_test:

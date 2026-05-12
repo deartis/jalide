@@ -11,6 +11,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/file_service.dart';
+import '../services/ssh_service.dart';
 import '../theme/jalide_theme.dart';
 import '../widgets/aux_keyboard.dart';
 import '../widgets/terminal_panel.dart';
@@ -18,6 +19,7 @@ import '../widgets/status_bar.dart';
 import '../widgets/file_explorer.dart';
 import '../widgets/editor_tabs_bar.dart';
 import '../utils/file_utils.dart';
+import 'ssh_connect_screen.dart';
 
 class EditorScreen extends StatefulWidget {
   const EditorScreen({super.key});
@@ -52,11 +54,10 @@ class _EditorScreenState extends State<EditorScreen> {
   JalideThemeVariant get _theme => ThemeProvider.of(context).current;
 
   bool _isTerminalVisible = false;
-  final List<String> _terminalLogs = [
-    'JALIDE Terminal v0.1.0',
-    'Initializing Node.js runtime...',
-    'Ready.',
-  ];
+  TerminalMode _terminalMode = TerminalMode.local;
+  SshSession? _activeSshSession;
+  bool _isRemoteProject = false;
+  final SshProfileManager _sshProfileManager = SshProfileManager();
 
   // Explorer de Projeto
   String? _projectPath;
@@ -82,7 +83,7 @@ class _EditorScreenState extends State<EditorScreen> {
   @override
   void initState() {
     super.initState();
-    // Aguarda o primeiro frame para evitar erro de layout (RenderBox not laid out)
+    _sshProfileManager.load();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadPreferences();
     });
@@ -157,6 +158,7 @@ class _EditorScreenState extends State<EditorScreen> {
         if (mounted) {
           setState(() {
             _projectPath = path;
+            _isRemoteProject = false;
             _projectFiles = files
                 .map(
                   (f) => {
@@ -193,6 +195,7 @@ class _EditorScreenState extends State<EditorScreen> {
       if (mounted) {
         setState(() {
           _projectPath = path;
+          _isRemoteProject = false;
           _projectFiles = entities
               .map(
                 (e) => {
@@ -208,6 +211,33 @@ class _EditorScreenState extends State<EditorScreen> {
     } catch (e) {
       _showToast('Erro ao listar arquivos: $e');
       debugPrint('JALIDE_ERROR: $e');
+    }
+  }
+
+  Future<void> _loadRemoteProjectFiles(String path) async {
+    if (_activeSshSession == null || !_activeSshSession!.isConnected) return;
+
+    try {
+      final files = await _activeSshSession!.listDir(path);
+      if (mounted) {
+        setState(() {
+          _projectPath = path;
+          _isRemoteProject = true;
+          _projectFiles = files
+              .map(
+                (f) => {
+                  'name': f.name,
+                  'path': f.path,
+                  'isDir': f.isDir,
+                  'isSaf': false,
+                  'isRemote': true,
+                },
+              )
+              .toList();
+        });
+      }
+    } catch (e) {
+      _showToast('Erro ao listar arquivos remotos: $e');
     }
   }
 
@@ -294,10 +324,12 @@ class _EditorScreenState extends State<EditorScreen> {
         content = await _termuxChannel.invokeMethod('readSafFile', {
           'uri': path,
         });
+      } else if (_isRemoteProject && _activeSshSession != null) {
+        content = await _activeSshSession!.readFile(path);
       } else {
         content = await FileService.readFile(path);
       }
-      _addTab(path, content);
+      _addTab(path, content, isRemote: _isRemoteProject);
 
       // Fecha o drawer usando a chave global do Scaffold
       if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
@@ -317,13 +349,14 @@ class _EditorScreenState extends State<EditorScreen> {
     _addTab(path, content);
   }
 
-  void _addTab(String path, String content) {
+  void _addTab(String path, String content, {bool isRemote = false}) {
     final existing = _openTabs.indexWhere((t) => t['path'] == path);
     if (existing == -1) {
       final Map<String, dynamic> newTab = {
         'path': path,
         'name': FileUtils.getDisplayName(path),
         'hasUnsavedChanges': false,
+        'isRemote': isRemote,
         'focusNode': FocusNode(),
       };
       newTab['initialContent'] = content;
@@ -359,6 +392,9 @@ class _EditorScreenState extends State<EditorScreen> {
           'uri': _activePath,
           'content': _activeController.text,
         });
+      } else if (_openTabs[_activeTabIndex]['isRemote'] == true &&
+          _activeSshSession != null) {
+        await _activeSshSession!.writeFile(_activePath!, _activeController.text);
       } else {
         final file = File(_activePath!);
         await file.writeAsString(_activeController.text);
@@ -475,7 +511,7 @@ class _EditorScreenState extends State<EditorScreen> {
     final currentLine = linesBefore.isNotEmpty ? linesBefore.last : '';
     final indentMatch = RegExp(r'^(\s*)').firstMatch(currentLine);
     final currentIndent = indentMatch?.group(1) ?? '';
-    final innerIndent = currentIndent + '  ';
+    final innerIndent = '$currentIndent  ';
 
     final pairs = {
       '{ }': '{\n$innerIndent\n$currentIndent}',
@@ -616,7 +652,7 @@ class _EditorScreenState extends State<EditorScreen> {
                     borderSide: BorderSide(color: _theme.border),
                   ),
                   focusedBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: Color(0xFF4CAF50)),
+                    borderSide: BorderSide(color: const Color(0xFF4CAF50)),
                   ),
                 ),
               ),
@@ -655,10 +691,13 @@ class _EditorScreenState extends State<EditorScreen> {
                                 await Clipboard.setData(
                                   const ClipboardData(text: setupCmd),
                                 );
-                                setLocalState(() => copied = true);
+                                if (ctx2.mounted) {
+                                  setLocalState(() => copied = true);
+                                }
                                 Future.delayed(const Duration(seconds: 2), () {
-                                  if (ctx2.mounted)
+                                  if (ctx2.mounted) {
                                     setLocalState(() => copied = false);
+                                  }
                                 });
                               },
                               child: AnimatedSwitcher(
@@ -792,6 +831,7 @@ class _EditorScreenState extends State<EditorScreen> {
     }
   }
 
+
   Future<void> _showCreateDialog(bool isFile) async {
     final controller = TextEditingController();
     final name = await showDialog<String>(
@@ -840,6 +880,23 @@ class _EditorScreenState extends State<EditorScreen> {
     final path = p.join(_projectPath!, name);
 
     try {
+      if (_isRemoteProject && _activeSshSession != null) {
+        if (isFile) {
+          await _activeSshSession!.writeFile(path, '');
+          await _loadRemoteProjectFiles(_projectPath!);
+          _addTab(path, '', isRemote: true);
+          _showToast('Arquivo remoto criado: $name');
+        } else {
+          // Nota: O SFTP do dartssh2 não tem mkdir direto exposto no SshSession
+          // Mas podemos usar o shell ou implementar mkdir no SshSession.
+          // Vou usar o SshSession e adicionar um método mkdir lá.
+          await _activeSshSession!.mkdir(path);
+          await _loadRemoteProjectFiles(_projectPath!);
+          _showToast('Pasta remota criada: $name');
+        }
+        return;
+      }
+
       if (isFile) {
         debugPrint('JALIDE_CREATE_FILE: $path');
         final file = File(path);
@@ -895,6 +952,8 @@ class _EditorScreenState extends State<EditorScreen> {
           onCreateFile: () => _showCreateDialog(true),
           onCreateFolder: () => _showCreateDialog(false),
           termuxChannel: _termuxChannel,
+          sshSession: _activeSshSession,
+          isRemoteProject: _isRemoteProject,
         ),
         body: Column(
           children: [
@@ -918,9 +977,11 @@ class _EditorScreenState extends State<EditorScreen> {
                       right: 0,
                       bottom: 0,
                       child: TerminalPanel(
-                        terminalLogs: _terminalLogs,
-                        onClose: () =>
-                            setState(() => _isTerminalVisible = false),
+                        key: ValueKey('term_${_terminalMode.name}_${_activeSshSession?.profile.id}'),
+                        onClose: () => setState(() => _isTerminalVisible = false),
+                        mode: _terminalMode,
+                        sshSession: _activeSshSession,
+                        projectPath: _projectPath,
                       ),
                     ),
                 ],
@@ -930,8 +991,13 @@ class _EditorScreenState extends State<EditorScreen> {
             StatusBar(
               languageName: _languageName,
               hasUnsavedChanges: _activeHasUnsavedChanges,
-              onTerminalToggle: () =>
-                  setState(() => _isTerminalVisible = !_isTerminalVisible),
+              onTerminalToggle: () {
+                setState(() {
+                  _terminalMode = TerminalMode.local;
+                  _activeSshSession = null;
+                  _isTerminalVisible = !_isTerminalVisible;
+                });
+              },
             ),
           ],
         ),
@@ -1042,6 +1108,7 @@ class _EditorScreenState extends State<EditorScreen> {
             if (v == 'theme') _showThemeDialog();
             if (v == 'zoom_in') _updateFontSize(_fontSize + 2);
             if (v == 'zoom_out') _updateFontSize(_fontSize - 2);
+            if (v == 'ssh') _openSshScreen();
           },
           itemBuilder: (_) => [
             _menuItem('new', 'Novo arquivo', Icons.add_outlined),
@@ -1050,6 +1117,7 @@ class _EditorScreenState extends State<EditorScreen> {
             _menuItem('zoom_in', 'Aumentar fonte', Icons.zoom_in),
             _menuItem('zoom_out', 'Diminuir fonte', Icons.zoom_out),
             const PopupMenuDivider(),
+            _menuItem('ssh', 'SSH Remote', Icons.cloud_outlined),
             _menuItem('theme', 'Mudar Tema', Icons.palette_outlined),
           ],
           icon: Icon(Icons.more_vert, color: _theme.textMuted, size: 20),
@@ -1186,6 +1254,30 @@ class _EditorScreenState extends State<EditorScreen> {
           ),
         );
       },
+    );
+  }
+
+  void _openSshScreen() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => SshConnectScreen(
+          profileManager: _sshProfileManager,
+          onConnected: (session) async {
+            setState(() {
+              _activeSshSession = session;
+              _terminalMode = TerminalMode.ssh;
+              _isTerminalVisible = true;
+            });
+            // Ao conectar, pergunta se quer abrir a home remota
+            final home = await session.getHomeDir();
+            await _loadRemoteProjectFiles(home);
+            if (mounted) {
+              _scaffoldKey.currentState?.openDrawer();
+              _showToast('Conectado! Explorer remoto aberto em $home');
+            }
+          },
+        ),
+      ),
     );
   }
 

@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
+import '../services/ssh_service.dart';
 import '../theme/jalide_theme.dart';
 import '../utils/file_utils.dart';
 
@@ -14,6 +15,8 @@ class FileExplorerDrawer extends StatelessWidget {
   final VoidCallback onCreateFile;
   final VoidCallback onCreateFolder;
   final MethodChannel termuxChannel;
+  final SshSession? sshSession;
+  final bool isRemoteProject;
 
   const FileExplorerDrawer({
     super.key,
@@ -25,6 +28,8 @@ class FileExplorerDrawer extends StatelessWidget {
     required this.onCreateFile,
     required this.onCreateFolder,
     required this.termuxChannel,
+    this.sshSession,
+    this.isRemoteProject = false,
   });
 
   @override
@@ -49,15 +54,17 @@ class FileExplorerDrawer extends StatelessWidget {
                   child: Text(
                     projectPath == null
                         ? 'EXPLORER'
-                        : FileUtils.getDisplayName(
-                            projectPath!,
-                            uppercase: true,
-                          ),
+                        : isRemoteProject
+                            ? 'REMOTE: ${p.basename(projectPath!)}'
+                            : FileUtils.getDisplayName(
+                                projectPath!,
+                                uppercase: true,
+                              ),
                     style: TextStyle(
-                      color: _theme.textPri,
+                      color: isRemoteProject ? _theme.accent : _theme.textPri,
                       fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                      letterSpacing: 1,
+                      fontSize: 13,
+                      letterSpacing: 0.5,
                     ),
                     overflow: TextOverflow.ellipsis,
                     maxLines: 1,
@@ -158,6 +165,15 @@ class FileExplorerDrawer extends StatelessWidget {
               icon: const Icon(Icons.terminal, size: 16),
               label: const Text('ABRIR DO TERMUX'),
             ),
+          if (sshSession != null && sshSession!.isConnected) ...[
+            const SizedBox(height: 20),
+            const Divider(indent: 40, endIndent: 40),
+            const SizedBox(height: 10),
+            Text(
+              'SSH ATIVO: ${sshSession!.profile.label}',
+              style: TextStyle(color: _theme.accent, fontSize: 10, fontWeight: FontWeight.bold),
+            ),
+          ],
         ],
       ),
     );
@@ -169,6 +185,7 @@ class FileExplorerDrawer extends StatelessWidget {
     final path = item['path'] as String;
     final isDir = item['isDir'] as bool;
     final isSaf = item['isSaf'] as bool;
+    final isRemote = item['isRemote'] as bool? ?? false;
 
     if (isDir) {
       if (name.startsWith('.')) return const SizedBox();
@@ -192,42 +209,58 @@ class FileExplorerDrawer extends StatelessWidget {
           childrenPadding: const EdgeInsets.only(left: 12),
           children: [
             FutureBuilder<List<Map<String, dynamic>>>(
-              future: isSaf
-                  ? termuxChannel
-                        .invokeMethod('listSafDirectory', {'uri': path})
-                        .then(
-                          (res) => (res as List)
+              future: isRemote
+                  ? sshSession?.listDir(path).then(
+                        (res) => res
+                            .map(
+                              (f) => {
+                                'name': f.name,
+                                'path': f.path,
+                                'isDir': f.isDir,
+                                'isSaf': false,
+                                'isRemote': true,
+                              },
+                            )
+                            .toList(),
+                      )
+                  : isSaf
+                      ? termuxChannel
+                            .invokeMethod('listSafDirectory', {'uri': path})
+                            .then(
+                              (res) => (res as List)
+                                  .map(
+                                    (f) => {
+                                      'name': f['name'] as String,
+                                      'path': f['uri'] as String,
+                                      'isDir': f['isDir'] as bool,
+                                      'isSaf': true,
+                                      'isRemote': false,
+                                    },
+                                  )
+                                  .toList(),
+                            )
+                      : Directory(path).list().toList().then((list) {
+                          list.sort((a, b) {
+                            if (a is Directory && b is! Directory) return -1;
+                            if (a is! Directory && b is Directory) return 1;
+                            return a.path.compareTo(b.path);
+                          });
+                          return list
                               .map(
-                                (f) => {
-                                  'name': f['name'] as String,
-                                  'path': f['uri'] as String,
-                                  'isDir': f['isDir'] as bool,
-                                  'isSaf': true,
+                                (e) => {
+                                  'name': p.basename(e.path),
+                                  'path': e.path,
+                                  'isDir': e is Directory,
+                                  'isSaf': false,
+                                  'isRemote': false,
                                 },
                               )
-                              .toList(),
-                        )
-                  : Directory(path).list().toList().then((list) {
-                      list.sort((a, b) {
-                        if (a is Directory && b is! Directory) return -1;
-                        if (a is! Directory && b is Directory) return 1;
-                        return a.path.compareTo(b.path);
-                      });
-                      return list
-                          .map(
-                            (e) => {
-                              'name': p.basename(e.path),
-                              'path': e.path,
-                              'isDir': e is Directory,
-                              'isSaf': false,
-                            },
-                          )
-                          .toList();
-                    }),
+                              .toList();
+                        }),
               builder: (context, snapshot) {
                 if (!snapshot.hasData) {
                   return Padding(
-                    padding: EdgeInsets.all(8.0),
+                    padding: const EdgeInsets.all(8.0),
                     child: Center(
                       child: SizedBox(
                         width: 16,

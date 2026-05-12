@@ -42,8 +42,7 @@ class MainActivity : FlutterActivity() {
                                 putExtra("com.termux.RUN_COMMAND_WORKDIR", "/data/data/com.termux/files/home")
                                 putExtra("com.termux.RUN_COMMAND_BACKGROUND", true)
                             }
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent)
-                            else startService(intent)
+                            startService(intent)
                             result.success(true)
                         } catch (e: Exception) { result.error("TERMUX_ERROR", e.message, null) }
                     }
