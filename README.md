@@ -18,7 +18,6 @@
 
 * [📖 Sobre](#-sobre)
 * [✨ Funcionalidades](#-funcionalidades)
-* [🖼️ Screenshots](#️-screenshots)
 * [🛠️ Integração JALIDE + Termux](#️-integração-jalide--termux)
 * [🚀 Roadmap](#-roadmap)
 * [🤝 Como contribuir](#-como-contribuir)
@@ -48,18 +47,6 @@ Seja para corrigir algo rápido em produção, estudar no ônibus ou desenvolver
 | 🎹    | **Teclado Auxiliar**    | Barra de atalhos otimizada para programação mobile            |
 | 🌙    | **Modo Escuro**         | Interface confortável para longas sessões de código           |
 | 🚀    | **Foco em Performance** | Interface leve e rápida mesmo em aparelhos modestos           |
-
----
-
-# 🖼️ Screenshots
-
-<div align="center">
-  <img src="screenshots/editor.png" width="220" alt="Editor"/>
-  <img src="screenshots/terminal.png" width="220" alt="Terminal"/>
-  <img src="screenshots/sftp.png" width="220" alt="SFTP"/>
-</div>
-
-> 💡 *Adicione screenshots reais do app na pasta `screenshots/` para deixar o projeto muito mais atrativo no GitHub.*
 
 ---
 
