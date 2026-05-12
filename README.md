@@ -1,35 +1,66 @@
-# Jalide
+JALIDE Mobile IDE 🚀
+Transforme seu Android em uma estação de desenvolvimento completa.
+![Flutter](https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter&logoColor=white)
+![Platform](https://img.shields.io/badge/Platform-Android-3DDC84?style=flat-square&logo=android&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)
+[![Status](https://img.shields.io/badge/Status-Em%20desenvolvimento-orange?style=flat-square)]()
+---
+Sobre
+JALIDE é uma IDE móvel moderna desenvolvida em Flutter, focada em JavaScript / Node.js. Desenvolvida para quando você tem apenas o celular à mão — sem abrir mão de produtividade.
+---
+✨ Funcionalidades
+	Funcionalidade	Descrição
+📝	Editor profissional	Syntax highlighting, zoom dinâmico e múltiplas abas
+🐚	Terminal híbrido	Alterne entre terminal local (Android) e remoto via SSH
+⚡	Termux Magic	Configura Node.js + SSH no Termux com um clique
+📂	SFTP nativo	Edite arquivos remotos como se fossem locais
+🔐	Gestor de perfis SSH	Credenciais seguras para acesso rápido a servidores
+🎹	Teclado auxiliar	Atalhos `{}` `[]` `=>` otimizados para telas pequenas
+---
+🛠️ Integração: JALIDE + Termux
+Para usar o potencial máximo (Node.js, NPM, Git), integre o JALIDE ao Termux.
+⚡ Passo 1 — Termux Magic (jeito fácil)
+Abra o JALIDE e toque no ícone de terminal no rodapé.
+No painel do terminal, toque no ícone de Raio Amarelo ⚡.
+Toque em "COPIAR E ABRIR TERMUX".
+No Termux, cole o comando e dê Enter — ele instala o Node.js e o servidor SSH automaticamente.
+Defina uma senha com `passwd` e anote seu usuário com `whoami`.
+> **⚠️ Guarde** seu usuário e senha — você vai precisar deles no próximo passo.
+---
+🔌 Passo 2 — Conectar via SSH
+No JALIDE, toque em ⋮ (menu superior) → SSH Remote.
+Toque em (+) para adicionar um novo perfil:
+Campo	Valor
+Host	`localhost`
+Porta	`8022`
+Usuário	resultado do `whoami`
+Senha	definida no `passwd`
+Salve e toque em Conectar. ✅
+---
+📂 Editando Arquivos Remotamente (SFTP)
+O JALIDE oferece um file explorer remoto completo, não apenas um terminal:
+Conectar → o explorer abre automaticamente na pasta `home` do servidor remoto.
+Abrir → toque em qualquer arquivo para carregá-lo no editor.
+Salvar → `Ctrl+S` faz o upload via SFTP instantaneamente.
+Persistência → feche o terminal para ganhar espaço na tela; a sessão SSH continua ativa em segundo plano.
+---
+🤝 Como Contribuir
+JALIDE é 100% open-source. Issues, sugestões e PRs são muito bem-vindos!
+```bash
+# 1. Fork o repositório e clone
+git clone https://github.com/seu-usuario/jalide.git
 
-Jalide é uma IDE Mobile desenvolvida em Flutter, criada para solucionar os problemas do dia a dia de um programador quando se tem apenas o celular na mão. 
+# 2. Crie sua branch
+git checkout -b minha-feature
 
-Atualmente em fase inicial, a IDE tem foco principal em **JavaScript**, buscando oferecer uma experiência simples, confortável e totalmente otimizada para telas móveis. Este é um projeto **100% open-source** e a contribuição da comunidade é muito bem-vinda!
+# 3. Commit suas mudanças
+git commit -m 'feat: minha contribuição'
 
-## 🚀 Funcionalidades Planejadas
-
-- **Abrir, Editar e Salvar** arquivos localmente.
-- **Teclado Auxiliar** para acesso rápido a caracteres essenciais da programação (como `{}`, `[]`, `()`, etc.).
-- **Terminal Integrado** (em breve).
-- **Acesso SSH Remoto**: Editar arquivos remotos de forma natural, direto do celular (em breve).
-- Interface focada no conforto, com tema escuro e esquema de cores amigável.
-
-## 🛠️ Tecnologias
-
-- **Framework:** Flutter / Dart
-- **Editor de Código:** `flutter_code_editor` com suporte a syntax highlighting.
-- **Plataformas Foco:** Android e iOS (Mobile-first).
-
-## 🤝 Como Contribuir
-
-Toda ajuda é bem-vinda! Se você deseja contribuir com o Jalide, siga estes passos:
-
-1. Faça um **Fork** deste repositório.
-2. Crie uma branch para sua feature ou correção: `git checkout -b minha-feature`
-3. Faça o commit das suas alterações: `git commit -m 'Adiciona nova feature'`
-4. Faça o push para a sua branch: `git push origin minha-feature`
-5. Abra um **Pull Request**.
-
-Atualmente estamos trabalhando muito no **Visual e UI/UX** da aplicação para garantir o máximo de conforto antes de focar na implementação pesada das funcionalidades (como o cliente SSH). 
-
-## 📝 Licença
-
-Este projeto é de código aberto e está disponível sob a licença [MIT](LICENSE).
+# 4. Push e abra um Pull Request
+git push origin minha-feature
+```
+---
+📝 Licença
+Distribuído sob a licença MIT. Veja `LICENSE` para mais informações.
+---
+Desenvolvido com ❤️ para a comunidade de desenvolvedores mobile.
