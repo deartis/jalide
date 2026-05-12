@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_code_editor/flutter_code_editor.dart';
 import 'package:highlight/languages/javascript.dart';
 import 'package:highlight/languages/json.dart';
+import 'package:jalide/services/ssh_service.dart';
+import 'package:jalide/screens/donation_screen.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -54,6 +56,7 @@ class _EditorScreenState extends State<EditorScreen> {
   JalideThemeVariant get _theme => ThemeProvider.of(context).current;
 
   bool _isTerminalVisible = false;
+  bool _hasTerminalBeenOpened = false;
   TerminalMode _terminalMode = TerminalMode.local;
   SshSession? _activeSshSession;
   bool _isRemoteProject = false;
@@ -394,7 +397,10 @@ class _EditorScreenState extends State<EditorScreen> {
         });
       } else if (_openTabs[_activeTabIndex]['isRemote'] == true &&
           _activeSshSession != null) {
-        await _activeSshSession!.writeFile(_activePath!, _activeController.text);
+        await _activeSshSession!.writeFile(
+          _activePath!,
+          _activeController.text,
+        );
       } else {
         final file = File(_activePath!);
         await file.writeAsString(_activeController.text);
@@ -831,7 +837,6 @@ class _EditorScreenState extends State<EditorScreen> {
     }
   }
 
-
   Future<void> _showCreateDialog(bool isFile) async {
     final controller = TextEditingController();
     final name = await showDialog<String>(
@@ -971,17 +976,24 @@ class _EditorScreenState extends State<EditorScreen> {
               child: Stack(
                 children: [
                   _buildEditor(),
-                  if (_isTerminalVisible)
+                  if (_hasTerminalBeenOpened)
                     Positioned(
                       left: 0,
                       right: 0,
                       bottom: 0,
-                      child: TerminalPanel(
-                        key: ValueKey('term_${_terminalMode.name}_${_activeSshSession?.profile.id}'),
-                        onClose: () => setState(() => _isTerminalVisible = false),
-                        mode: _terminalMode,
-                        sshSession: _activeSshSession,
-                        projectPath: _projectPath,
+                      child: Visibility(
+                        visible: _isTerminalVisible,
+                        maintainState: true,
+                        child: TerminalPanel(
+                          key: ValueKey(
+                            'term_${_terminalMode.name}_${_activeSshSession?.profile.id}',
+                          ),
+                          onClose: () =>
+                              setState(() => _isTerminalVisible = false),
+                          mode: _terminalMode,
+                          sshSession: _activeSshSession,
+                          projectPath: _projectPath,
+                        ),
                       ),
                     ),
                 ],
@@ -993,9 +1005,10 @@ class _EditorScreenState extends State<EditorScreen> {
               hasUnsavedChanges: _activeHasUnsavedChanges,
               onTerminalToggle: () {
                 setState(() {
-                  _terminalMode = TerminalMode.local;
-                  _activeSshSession = null;
                   _isTerminalVisible = !_isTerminalVisible;
+                  if (_isTerminalVisible) {
+                    _hasTerminalBeenOpened = true;
+                  }
                 });
               },
             ),
@@ -1095,6 +1108,16 @@ class _EditorScreenState extends State<EditorScreen> {
             color: _activeHasUnsavedChanges ? _theme.accent : _theme.textMuted,
           ),
           tooltip: 'Salvar',
+        ),
+        IconButton(
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const DonationScreen()),
+            );
+          },
+          icon: const Icon(Icons.favorite, size: 20, color: Colors.redAccent),
+          tooltip: 'Apoiar Projeto',
         ),
         PopupMenuButton<String>(
           color: _theme.surface,
@@ -1231,7 +1254,10 @@ class _EditorScreenState extends State<EditorScreen> {
         final provider = ThemeProvider.of(context);
         return AlertDialog(
           backgroundColor: _theme.surface,
-          title: Text('Selecionar Tema', style: TextStyle(color: _theme.textPri)),
+          title: Text(
+            'Selecionar Tema',
+            style: TextStyle(color: _theme.textPri),
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: ThemeType.values.map((type) {
@@ -1266,6 +1292,7 @@ class _EditorScreenState extends State<EditorScreen> {
             setState(() {
               _activeSshSession = session;
               _terminalMode = TerminalMode.ssh;
+              _hasTerminalBeenOpened = true;
               _isTerminalVisible = true;
             });
             // Ao conectar, pergunta se quer abrir a home remota
@@ -1316,11 +1343,16 @@ class _EditorScreenState extends State<EditorScreen> {
       child: CodeTheme(
         data: CodeThemeData(
           styles: {
-            'root': TextStyle(color: _theme.textPri, backgroundColor: _theme.bg),
+            'root': TextStyle(
+              color: _theme.textPri,
+              backgroundColor: _theme.bg,
+            ),
             'keyword': TextStyle(color: _theme.kwColor),
             'string': TextStyle(color: _theme.strColor),
-            'comment':
-                TextStyle(color: _theme.commentColor, fontStyle: FontStyle.italic),
+            'comment': TextStyle(
+              color: _theme.commentColor,
+              fontStyle: FontStyle.italic,
+            ),
             'number': TextStyle(color: _theme.numColor),
             'function': TextStyle(color: _theme.fnColor),
             'title': TextStyle(color: _theme.fnColor),
