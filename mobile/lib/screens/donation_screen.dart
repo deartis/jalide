@@ -39,10 +39,10 @@ class _DonationScreenState extends State<DonationScreen>
       // Substitua pela URL do seu VPS/API
       // Exemplo: final response = await http.get(Uri.parse('https://api.jalide.com/pix'));
       // final response = await http.get(Uri.parse('SUA_URL_DA_VPS_AQUI'));
-      
+
       // Simulação de delay de rede
       await Future.delayed(const Duration(seconds: 1));
-      
+
       /* 
       if (response.statusCode == 200) {
         setState(() {
