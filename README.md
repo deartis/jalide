@@ -1,66 +1,74 @@
-JALIDE Mobile IDE 🚀
-Transforme seu Android em uma estação de desenvolvimento completa.
-![Flutter](https://img.shields.io/badge/Flutter-3.x-02569B?style=flat-square&logo=flutter&logoColor=white)
-![Platform](https://img.shields.io/badge/Platform-Android-3DDC84?style=flat-square&logo=android&logoColor=white)
-![License](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)
-[![Status](https://img.shields.io/badge/Status-Em%20desenvolvimento-orange?style=flat-square)]()
+# 🚀 JALIDE Mobile IDE
+
+> **Transforme seu Android em uma estação de desenvolvimento completa.**
+
+<div align="center">
+
+![Flutter](https://img.shields.io/badge/Flutter-3.x-02569B?style=for-the-badge&logo=flutter&logoColor=white)
+![Platform](https://img.shields.io/badge/Platform-Android-3DDC84?style=for-the-badge&logo=android&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)
+[![Status](https://img.shields.io/badge/Status-Em%20desenvolvimento-orange?style=for-the-badge)]()
+
+</div>
+
 ---
-Sobre
-JALIDE é uma IDE móvel moderna desenvolvida em Flutter, focada em JavaScript / Node.js. Desenvolvida para quando você tem apenas o celular à mão — sem abrir mão de produtividade.
+
+## 📑 Índice
+
+- [Sobre](#-sobre)
+- [Funcionalidades](#-funcionalidades)
+- [Screenshots](#-screenshots) *(opcional)*
+- [Integração com Termux](#-integração-jalide--termux)
+- [Contribuindo](#-como-contribuir)
+- [Licença](#-licença)
+
 ---
-✨ Funcionalidades
-	Funcionalidade	Descrição
-📝	Editor profissional	Syntax highlighting, zoom dinâmico e múltiplas abas
-🐚	Terminal híbrido	Alterne entre terminal local (Android) e remoto via SSH
-⚡	Termux Magic	Configura Node.js + SSH no Termux com um clique
-📂	SFTP nativo	Edite arquivos remotos como se fossem locais
-🔐	Gestor de perfis SSH	Credenciais seguras para acesso rápido a servidores
-🎹	Teclado auxiliar	Atalhos `{}` `[]` `=>` otimizados para telas pequenas
+
+## 📖 Sobre
+
+**JALIDE** é uma IDE móvel moderna desenvolvida em **Flutter**, focada em **JavaScript / Node.js**. 
+
+Foi criada para quando você tem apenas o celular à mão — sem abrir mão de produtividade. 💻📱
+
 ---
-🛠️ Integração: JALIDE + Termux
-Para usar o potencial máximo (Node.js, NPM, Git), integre o JALIDE ao Termux.
-⚡ Passo 1 — Termux Magic (jeito fácil)
-Abra o JALIDE e toque no ícone de terminal no rodapé.
-No painel do terminal, toque no ícone de Raio Amarelo ⚡.
-Toque em "COPIAR E ABRIR TERMUX".
-No Termux, cole o comando e dê Enter — ele instala o Node.js e o servidor SSH automaticamente.
-Defina uma senha com `passwd` e anote seu usuário com `whoami`.
-> **⚠️ Guarde** seu usuário e senha — você vai precisar deles no próximo passo.
+
+## ✨ Funcionalidades
+
+| Ícone | Funcionalidade | Descrição |
+|-------|---------------|-----------|
+| 📝 | **Editor Profissional** | Syntax highlighting, zoom dinâmico e múltiplas abas |
+| 🐚 | **Terminal Híbrido** | Alterne entre terminal local (Android) e remoto via SSH |
+| ⚡ | **Termux Magic** | Configura Node.js + SSH no Termux com um clique |
+| 📂 | **SFTP Nativo** | Edite arquivos remotos como se fossem locais |
+| 🔐 | **Gestor de Perfis SSH** | Credenciais seguras para acesso rápido a servidores |
+| 🎹 | **Teclado Auxiliar** | Atalhos `{}` `[]` `=>` otimizados para telas pequenas |
+
 ---
-🔌 Passo 2 — Conectar via SSH
-No JALIDE, toque em ⋮ (menu superior) → SSH Remote.
-Toque em (+) para adicionar um novo perfil:
-Campo	Valor
-Host	`localhost`
-Porta	`8022`
-Usuário	resultado do `whoami`
-Senha	definida no `passwd`
-Salve e toque em Conectar. ✅
+
+## 🖼️ Screenshots
+
+<div align="center">
+  <img src="screenshots/editor.png" width="200" alt="Editor"/>
+  <img src="screenshots/terminal.png" width="200" alt="Terminal"/>
+  <img src="screenshots/sftp.png" width="200" alt="SFTP"/>
+</div>
+
+> 💡 *Dica: Adicione prints reais do app na pasta `screenshots/` para aumentar o engajamento!*
+
 ---
-📂 Editando Arquivos Remotamente (SFTP)
-O JALIDE oferece um file explorer remoto completo, não apenas um terminal:
-Conectar → o explorer abre automaticamente na pasta `home` do servidor remoto.
-Abrir → toque em qualquer arquivo para carregá-lo no editor.
-Salvar → `Ctrl+S` faz o upload via SFTP instantaneamente.
-Persistência → feche o terminal para ganhar espaço na tela; a sessão SSH continua ativa em segundo plano.
----
-🤝 Como Contribuir
-JALIDE é 100% open-source. Issues, sugestões e PRs são muito bem-vindos!
+
+## 🛠️ Integração: JALIDE + Termux
+
+Para usar o potencial máximo (**Node.js**, **NPM**, **Git**), integre o JALIDE ao Termux.
+
+### ⚡ Passo 1 — Termux Magic (Jeito Fácil)
+
+1. Abra o **JALIDE** e toque no ícone de terminal no rodapé 🐚
+2. No painel do terminal, toque no ícone de **Raio Amarelo** ⚡
+3. Toque em **"COPIAR E ABRIR TERMUX"**
+4. No Termux, cole o comando e dê `Enter` — ele instala Node.js e o servidor SSH automaticamente
+5. Defina uma senha e anote seu usuário:
+
 ```bash
-# 1. Fork o repositório e clone
-git clone https://github.com/seu-usuario/jalide.git
-
-# 2. Crie sua branch
-git checkout -b minha-feature
-
-# 3. Commit suas mudanças
-git commit -m 'feat: minha contribuição'
-
-# 4. Push e abra um Pull Request
-git push origin minha-feature
-```
----
-📝 Licença
-Distribuído sob a licença MIT. Veja `LICENSE` para mais informações.
----
-Desenvolvido com ❤️ para a comunidade de desenvolvedores mobile.
+passwd      # Define sua senha
+whoami      # Anote o resultado para usar no SSH
