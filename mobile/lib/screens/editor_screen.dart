@@ -13,7 +13,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/file_service.dart';
-import '../services/ssh_service.dart';
+//import '../services/ssh_service.dart';
 import '../theme/jalide_theme.dart';
 import '../widgets/aux_keyboard.dart';
 import '../widgets/terminal_panel.dart';
