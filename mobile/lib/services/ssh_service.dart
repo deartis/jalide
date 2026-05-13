@@ -33,8 +33,8 @@ class SshProfile {
     'host': host,
     'port': port.toString(),
     'username': username,
-    if (password != null) 'password': password!,
-    if (privateKeyPem != null) 'privateKeyPem': privateKeyPem!,
+    'password': ?password,
+    'privateKeyPem': ?privateKeyPem,
   };
 
   factory SshProfile.fromMap(Map<String, String> m) => SshProfile(

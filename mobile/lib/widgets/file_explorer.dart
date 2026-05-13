@@ -34,34 +34,30 @@ class FileExplorerDrawer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final _theme = ThemeProvider.of(context).current;
+    final theme = ThemeProvider.of(context).current;
     return Drawer(
-      backgroundColor: _theme.bg,
+      backgroundColor: theme.bg,
       child: Column(
         children: [
           Container(
             padding: const EdgeInsets.fromLTRB(16, 60, 8, 20),
-            color: _theme.surface,
+            color: theme.surface,
             child: Row(
               children: [
-                Icon(
-                  Icons.folder_copy_outlined,
-                  color: _theme.accent,
-                  size: 22,
-                ),
+                Icon(Icons.folder_copy_outlined, color: theme.accent, size: 22),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     projectPath == null
                         ? 'EXPLORER'
                         : isRemoteProject
-                            ? 'REMOTE: ${p.basename(projectPath!)}'
-                            : FileUtils.getDisplayName(
-                                projectPath!,
-                                uppercase: true,
-                              ),
+                        ? 'REMOTE: ${p.basename(projectPath!)}'
+                        : FileUtils.getDisplayName(
+                            projectPath!,
+                            uppercase: true,
+                          ),
                     style: TextStyle(
-                      color: isRemoteProject ? _theme.accent : _theme.textPri,
+                      color: isRemoteProject ? theme.accent : theme.textPri,
                       fontWeight: FontWeight.bold,
                       fontSize: 13,
                       letterSpacing: 0.5,
@@ -75,7 +71,7 @@ class FileExplorerDrawer extends StatelessWidget {
                     onPressed: onCreateFile,
                     icon: Icon(
                       Icons.note_add_outlined,
-                      color: _theme.textMuted,
+                      color: theme.textMuted,
                       size: 20,
                     ),
                     tooltip: 'Novo Arquivo',
@@ -87,7 +83,7 @@ class FileExplorerDrawer extends StatelessWidget {
                     onPressed: onCreateFolder,
                     icon: Icon(
                       Icons.create_new_folder_outlined,
-                      color: _theme.textMuted,
+                      color: theme.textMuted,
                       size: 20,
                     ),
                     tooltip: 'Nova Pasta',
@@ -100,7 +96,7 @@ class FileExplorerDrawer extends StatelessWidget {
                   onPressed: onPickFolder,
                   icon: Icon(
                     Icons.folder_open_outlined,
-                    color: _theme.textMuted,
+                    color: theme.textMuted,
                     size: 20,
                   ),
                   tooltip: 'Selecionar pasta projeto',
@@ -113,7 +109,7 @@ class FileExplorerDrawer extends StatelessWidget {
 
           Expanded(
             child: projectPath == null
-                ? _buildEmptyState(_theme)
+                ? _buildEmptyState(theme)
                 : ListView(
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     children: projectFiles
@@ -126,7 +122,7 @@ class FileExplorerDrawer extends StatelessWidget {
     );
   }
 
-  Widget _buildEmptyState(JalideThemeVariant _theme) {
+  Widget _buildEmptyState(JalideThemeVariant theme) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -134,18 +130,18 @@ class FileExplorerDrawer extends StatelessWidget {
           Icon(
             Icons.folder_open,
             size: 48,
-            color: _theme.textMuted.withValues(alpha: 0.3),
+            color: theme.textMuted.withValues(alpha: 0.3),
           ),
           const SizedBox(height: 16),
           Text(
             'Nenhum projeto aberto',
-            style: TextStyle(color: _theme.textMuted, fontSize: 12),
+            style: TextStyle(color: theme.textMuted, fontSize: 12),
           ),
           const SizedBox(height: 12),
           ElevatedButton.icon(
             onPressed: onPickFolder,
             style: ElevatedButton.styleFrom(
-              backgroundColor: _theme.accent,
+              backgroundColor: theme.accent,
               foregroundColor: Colors.black,
               textStyle: const TextStyle(fontWeight: FontWeight.bold),
             ),
@@ -171,7 +167,11 @@ class FileExplorerDrawer extends StatelessWidget {
             const SizedBox(height: 10),
             Text(
               'SSH ATIVO: ${sshSession!.profile.label}',
-              style: TextStyle(color: _theme.accent, fontSize: 10, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                color: theme.accent,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ],
         ],
@@ -180,7 +180,7 @@ class FileExplorerDrawer extends StatelessWidget {
   }
 
   Widget _buildExplorerNode(BuildContext context, Map<String, dynamic> item) {
-    final _theme = ThemeProvider.of(context).current;
+    final theme = ThemeProvider.of(context).current;
     final name = item['name'] as String;
     final path = item['path'] as String;
     final isDir = item['isDir'] as bool;
@@ -195,68 +195,70 @@ class FileExplorerDrawer extends StatelessWidget {
         child: ExpansionTile(
           key: PageStorageKey(path),
           tilePadding: const EdgeInsets.symmetric(horizontal: 16),
-          leading: Icon(Icons.folder_rounded, color: _theme.accent, size: 18),
+          leading: Icon(Icons.folder_rounded, color: theme.accent, size: 18),
           title: Text(
             name,
             style: TextStyle(
-              color: _theme.textPri,
+              color: theme.textPri,
               fontSize: 13,
               fontFamily: 'sans-serif',
             ),
           ),
-          iconColor: _theme.accent,
-          collapsedIconColor: _theme.textMuted,
+          iconColor: theme.accent,
+          collapsedIconColor: theme.textMuted,
           childrenPadding: const EdgeInsets.only(left: 12),
           children: [
             FutureBuilder<List<Map<String, dynamic>>>(
               future: isRemote
-                  ? sshSession?.listDir(path).then(
-                        (res) => res
-                            .map(
-                              (f) => {
-                                'name': f.name,
-                                'path': f.path,
-                                'isDir': f.isDir,
-                                'isSaf': false,
-                                'isRemote': true,
-                              },
-                            )
-                            .toList(),
-                      )
-                  : isSaf
-                      ? termuxChannel
-                            .invokeMethod('listSafDirectory', {'uri': path})
-                            .then(
-                              (res) => (res as List)
-                                  .map(
-                                    (f) => {
-                                      'name': f['name'] as String,
-                                      'path': f['uri'] as String,
-                                      'isDir': f['isDir'] as bool,
-                                      'isSaf': true,
-                                      'isRemote': false,
-                                    },
-                                  )
-                                  .toList(),
-                            )
-                      : Directory(path).list().toList().then((list) {
-                          list.sort((a, b) {
-                            if (a is Directory && b is! Directory) return -1;
-                            if (a is! Directory && b is Directory) return 1;
-                            return a.path.compareTo(b.path);
-                          });
-                          return list
+                  ? sshSession
+                        ?.listDir(path)
+                        .then(
+                          (res) => res
                               .map(
-                                (e) => {
-                                  'name': p.basename(e.path),
-                                  'path': e.path,
-                                  'isDir': e is Directory,
+                                (f) => {
+                                  'name': f.name,
+                                  'path': f.path,
+                                  'isDir': f.isDir,
                                   'isSaf': false,
+                                  'isRemote': true,
+                                },
+                              )
+                              .toList(),
+                        )
+                  : isSaf
+                  ? termuxChannel
+                        .invokeMethod('listSafDirectory', {'uri': path})
+                        .then(
+                          (res) => (res as List)
+                              .map(
+                                (f) => {
+                                  'name': f['name'] as String,
+                                  'path': f['uri'] as String,
+                                  'isDir': f['isDir'] as bool,
+                                  'isSaf': true,
                                   'isRemote': false,
                                 },
                               )
-                              .toList();
-                        }),
+                              .toList(),
+                        )
+                  : Directory(path).list().toList().then((list) {
+                      list.sort((a, b) {
+                        if (a is Directory && b is! Directory) return -1;
+                        if (a is! Directory && b is Directory) return 1;
+                        return a.path.compareTo(b.path);
+                      });
+                      return list
+                          .map(
+                            (e) => {
+                              'name': p.basename(e.path),
+                              'path': e.path,
+                              'isDir': e is Directory,
+                              'isSaf': false,
+                              'isRemote': false,
+                            },
+                          )
+                          .toList();
+                    }),
               builder: (context, snapshot) {
                 if (!snapshot.hasData) {
                   return Padding(
@@ -267,7 +269,7 @@ class FileExplorerDrawer extends StatelessWidget {
                         height: 16,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          color: _theme.accent,
+                          color: theme.accent,
                         ),
                       ),
                     ),
@@ -290,13 +292,13 @@ class FileExplorerDrawer extends StatelessWidget {
       contentPadding: const EdgeInsets.only(left: 16, right: 16),
       leading: Icon(
         FileUtils.iconForFile(name),
-        color: FileUtils.colorForFile(name, theme: _theme),
+        color: FileUtils.colorForFile(name, theme: theme),
         size: 18,
       ),
       title: Text(
         name,
         style: TextStyle(
-          color: _theme.textPri,
+          color: theme.textPri,
           fontSize: 13,
           fontFamily: 'monospace',
         ),

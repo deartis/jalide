@@ -9,12 +9,12 @@ class AuxKeyboard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final _theme = ThemeProvider.of(context).current;
+    final theme = ThemeProvider.of(context).current;
     return Container(
       height: 40,
       decoration: BoxDecoration(
-        color: _theme.surface,
-        border: Border(top: BorderSide(color: _theme.border)),
+        color: theme.surface,
+        border: Border(top: BorderSide(color: theme.border)),
       ),
       child: ListView(
         scrollDirection: Axis.horizontal,
@@ -28,10 +28,10 @@ class AuxKeyboard extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
               decoration: BoxDecoration(
                 color: isSpecial
-                    ? _theme.accent.withValues(alpha: 0.12)
+                    ? theme.accent.withValues(alpha: 0.12)
                     : const Color(0xFF1A1A20),
                 border: Border.all(
-                  color: isSpecial ? _theme.accent : _theme.border,
+                  color: isSpecial ? theme.accent : theme.border,
                   width: isSpecial ? 1 : 0.5,
                 ),
                 borderRadius: BorderRadius.circular(5),
@@ -39,7 +39,7 @@ class AuxKeyboard extends StatelessWidget {
               child: Text(
                 key,
                 style: TextStyle(
-                  color: isSpecial ? _theme.accent : _theme.textMuted,
+                  color: isSpecial ? theme.accent : theme.textMuted,
                   fontFamily: 'monospace',
                   fontSize: 11,
                   fontWeight: isSpecial ? FontWeight.bold : FontWeight.normal,

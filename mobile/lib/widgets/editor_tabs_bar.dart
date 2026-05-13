@@ -17,12 +17,12 @@ class EditorTabsBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final _theme = ThemeProvider.of(context).current;
+    final theme = ThemeProvider.of(context).current;
     return Container(
       height: 32,
       decoration: BoxDecoration(
         color: Color(0xFF0F0F12),
-        border: Border(bottom: BorderSide(color: _theme.border)),
+        border: Border(bottom: BorderSide(color: theme.border)),
       ),
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
@@ -35,11 +35,11 @@ class EditorTabsBar extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14),
               decoration: BoxDecoration(
-                color: isActive ? _theme.surface : Colors.transparent,
+                color: isActive ? theme.surface : Colors.transparent,
                 border: Border(
-                  right: BorderSide(color: _theme.border),
+                  right: BorderSide(color: theme.border),
                   bottom: BorderSide(
-                    color: isActive ? _theme.accent : Colors.transparent,
+                    color: isActive ? theme.accent : Colors.transparent,
                     width: 2,
                   ),
                 ),
@@ -52,14 +52,14 @@ class EditorTabsBar extends StatelessWidget {
                       height: 5,
                       margin: const EdgeInsets.only(right: 6),
                       decoration: BoxDecoration(
-                        color: _theme.accent,
+                        color: theme.accent,
                         shape: BoxShape.circle,
                       ),
                     ),
                   Text(
                     tab['name'] as String,
                     style: TextStyle(
-                      color: isActive ? _theme.textPri : _theme.textMuted,
+                      color: isActive ? theme.textPri : theme.textMuted,
                       fontFamily: 'monospace',
                       fontSize: 11,
                       fontWeight: isActive
@@ -74,8 +74,8 @@ class EditorTabsBar extends StatelessWidget {
                       Icons.close,
                       size: 14,
                       color: isActive
-                          ? _theme.textMuted
-                          : _theme.textMuted.withValues(alpha: 0.3),
+                          ? theme.textMuted
+                          : theme.textMuted.withValues(alpha: 0.3),
                     ),
                   ),
                 ],
