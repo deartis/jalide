@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -126,7 +127,7 @@ class _EditorScreenState extends State<EditorScreen> {
     if (savedProjectPath != null) {
       bool exists = false;
       if (savedProjectPath.startsWith('content://')) {
-        exists = true; // URIs SAF serão validadas na tentativa de carregamento
+        exists = true;
       } else {
         exists = Directory(savedProjectPath).existsSync();
       }
@@ -136,22 +137,67 @@ class _EditorScreenState extends State<EditorScreen> {
       }
     }
 
+    // Load Persisted Tabs
+    final persistedTabsStr = prefs.getString('persisted_open_tabs');
+    if (persistedTabsStr != null) {
+      try {
+        final List<dynamic> tabsData = jsonDecode(persistedTabsStr);
+        for (final tabData in tabsData) {
+          final String? path = tabData['path'];
+          final bool isRemote = tabData['isRemote'] as bool? ?? false;
+          if (path != null && path.isNotEmpty) {
+            bool exists = false;
+            if (path.startsWith('content://') || isRemote) {
+              exists = true;
+            } else {
+              exists = File(path).existsSync();
+            }
+
+            if (exists) {
+              String content = "";
+              if (!isRemote) {
+                try {
+                  content = await FileService.readFile(path);
+                } catch (e) {
+                  debugPrint('JALIDE_LOAD_PERSISTED_TAB_READ_ERROR: $e');
+                }
+              }
+              _addTab(path, content, isRemote: isRemote);
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('JALIDE_LOAD_PERSISTED_TABS_ERROR: $e');
+      }
+    }
+
     // Load Last Active File
     final savedActiveFile = prefs.getString('last_active_file');
     if (savedActiveFile != null) {
-      bool exists = false;
-      if (savedActiveFile.startsWith('content://')) {
-        exists = true;
+      final index = _openTabs.indexWhere((t) => t['path'] == savedActiveFile);
+      if (index != -1) {
+        setState(() {
+          _activeTabIndex = index;
+        });
       } else {
-        exists = File(savedActiveFile).existsSync();
-      }
+        bool exists = false;
+        if (savedActiveFile.startsWith('content://')) {
+          exists = true;
+        } else {
+          exists = File(savedActiveFile).existsSync();
+        }
 
-      if (exists) {
-        final content = await FileService.readFile(savedActiveFile);
-        _addTab(savedActiveFile, content);
+        if (exists) {
+          try {
+            final content = await FileService.readFile(savedActiveFile);
+            _addTab(savedActiveFile, content);
+          } catch (_) {}
+        }
       }
-    } else {
-      if (mounted && _openTabs.isEmpty) _createNewTab();
+    }
+
+    if (mounted && _openTabs.isEmpty) {
+      _createNewTab();
     }
   }
 
@@ -162,10 +208,24 @@ class _EditorScreenState extends State<EditorScreen> {
     await prefs.setDouble('last_font_size', _fontSize);
   }
 
-  Future<void> _saveActiveFilePreference(String? path) async {
+  Future<void> _saveTabsPreference() async {
     final prefs = await SharedPreferences.getInstance();
-    if (path != null) {
-      await prefs.setString('last_active_file', path);
+    final validTabs = _openTabs.where((t) => t['path'] != null && (t['path'] as String).isNotEmpty).toList();
+    final List<Map<String, dynamic>> tabsData = validTabs.map((t) {
+      return {
+        'path': t['path'] as String,
+        'isRemote': t['isRemote'] as bool? ?? false,
+      };
+    }).toList();
+    await prefs.setString('persisted_open_tabs', jsonEncode(tabsData));
+
+    if (_activeTabIndex != -1 && _activeTabIndex < _openTabs.length) {
+      final activePath = _openTabs[_activeTabIndex]['path'];
+      if (activePath != null && (activePath as String).isNotEmpty) {
+        await prefs.setString('last_active_file', activePath);
+      } else {
+        await prefs.remove('last_active_file');
+      }
     } else {
       await prefs.remove('last_active_file');
     }
@@ -317,6 +377,7 @@ class _EditorScreenState extends State<EditorScreen> {
       _openTabs.add(newTab);
       _activeTabIndex = _openTabs.length - 1;
     });
+    _saveTabsPreference();
   }
 
   String get _fileName {
@@ -399,6 +460,7 @@ class _EditorScreenState extends State<EditorScreen> {
         _activeTabIndex = existing;
       });
     }
+    _saveTabsPreference();
   }
 
   Future<void> _saveFile() async {
@@ -507,6 +569,7 @@ class _EditorScreenState extends State<EditorScreen> {
         _openTabs[_activeTabIndex]['initialContent'] = content;
         _activeController.language = _langForPath(finalPath);
       });
+      _saveTabsPreference();
       // Atualiza o explorer se o arquivo foi salvo na pasta do projeto
       if (_projectPath != null) await _loadProjectFiles(_projectPath!);
       _showToast('Salvo como ${p.basename(finalPath)}');
@@ -1192,7 +1255,7 @@ class _EditorScreenState extends State<EditorScreen> {
                 activeIndex: _activeTabIndex,
                 onTabTap: (i) {
                   setState(() => _activeTabIndex = i);
-                  _saveActiveFilePreference(_openTabs[i]['path'] as String?);
+                  _saveTabsPreference();
                 },
                 onCloseTab: _closeTab,
               ),
@@ -1210,7 +1273,7 @@ class _EditorScreenState extends State<EditorScreen> {
                         maintainState: true,
                         child: TerminalPanel(
                           key: ValueKey(
-                            'term_${_terminalMode.name}_${_activeSshSession?.profile.id}',
+                            'term_${_terminalMode.name}_${_activeSshSession?.profile.id}_$_projectPath',
                           ),
                           onClose: () =>
                               setState(() => _isTerminalVisible = false),
@@ -1432,11 +1495,7 @@ class _EditorScreenState extends State<EditorScreen> {
         focusNode.dispose();
       });
 
-      _saveActiveFilePreference(
-        _activeTabIndex != -1
-            ? _openTabs[_activeTabIndex]['path'] as String?
-            : null,
-      );
+      _saveTabsPreference();
     }
 
     if (hasUnsaved) {

@@ -95,6 +95,9 @@ class TerminalPanelState extends State<TerminalPanel> {
     }
 
     String workingDir = widget.projectPath ?? '';
+    if (workingDir.startsWith('content://')) {
+      workingDir = _resolveSafPath(workingDir);
+    }
     if (workingDir.isEmpty || !Directory(workingDir).existsSync()) {
       final docDir = await getApplicationDocumentsDirectory();
       workingDir = docDir.path;
@@ -147,6 +150,17 @@ class TerminalPanelState extends State<TerminalPanel> {
 
     // Atualiza tamanho do PTY remoto quando a UI redimensiona
     _terminal.onResize = (w, h, _, _) => session.resizePty(w, h);
+
+    // Executa cd automático para o diretório do projeto no SSH remoto
+    if (widget.projectPath != null && widget.projectPath!.isNotEmpty) {
+      String remotePath = widget.projectPath!;
+      if (remotePath.startsWith('content://')) {
+        remotePath = _resolveSafPath(remotePath);
+      }
+      Future.delayed(const Duration(milliseconds: 600), () {
+        session.writeToShell('cd "$remotePath"\n');
+      });
+    }
   }
 
   Future<void> _activateTermuxMagic() async {
@@ -426,5 +440,28 @@ class TerminalPanelState extends State<TerminalPanel> {
       ),
       padding: const EdgeInsets.all(8),
     );
+  }
+
+  String _resolveSafPath(String safUri) {
+    if (!safUri.startsWith('content://')) return safUri;
+    try {
+      final uri = Uri.parse(safUri);
+      final decodedPath = Uri.decodeComponent(uri.path);
+      final treeIndex = decodedPath.indexOf('tree/');
+      if (treeIndex != -1) {
+        final treePart = decodedPath.substring(treeIndex + 5);
+        if (treePart.startsWith('primary:')) {
+          final relativePath = treePart.substring(8);
+          return '/storage/emulated/0/$relativePath';
+        } else if (treePart.startsWith('raw:')) {
+          return treePart.substring(4);
+        } else if (treePart.startsWith('/')) {
+          return treePart;
+        }
+      }
+    } catch (e) {
+      debugPrint('Error resolving SAF path: $e');
+    }
+    return safUri;
   }
 }
