@@ -5,12 +5,14 @@ class StatusBar extends StatelessWidget {
   final String languageName;
   final bool hasUnsavedChanges;
   final VoidCallback onTerminalToggle;
+  final VoidCallback? onLanguageTap;
 
   const StatusBar({
     super.key,
     required this.languageName,
     required this.hasUnsavedChanges,
     required this.onTerminalToggle,
+    this.onLanguageTap,
   });
 
   @override
@@ -26,7 +28,11 @@ class StatusBar extends StatelessWidget {
             child: _sbChip('⬡ Terminal'),
           ),
           const SizedBox(width: 12),
-          _sbChip(languageName),
+          GestureDetector(
+            onTap: onLanguageTap,
+            behavior: HitTestBehavior.opaque,
+            child: _sbChip(languageName),
+          ),
           const SizedBox(width: 12),
           _sbChip('UTF-8'),
           const Spacer(),

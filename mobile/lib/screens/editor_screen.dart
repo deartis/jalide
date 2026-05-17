@@ -6,6 +6,13 @@ import 'package:flutter/services.dart';
 import 'package:flutter_code_editor/flutter_code_editor.dart';
 import 'package:highlight/languages/javascript.dart';
 import 'package:highlight/languages/json.dart';
+import 'package:highlight/languages/python.dart';
+import 'package:highlight/languages/xml.dart';
+import 'package:highlight/highlight.dart';
+import 'package:highlight/languages/css.dart';
+import 'package:highlight/languages/dart.dart';
+import 'package:highlight/languages/cpp.dart';
+import 'package:highlight/languages/markdown.dart';
 import 'package:jalide/services/ssh_service.dart';
 import 'package:jalide/screens/donation_screen.dart';
 import 'package:path/path.dart' as p;
@@ -365,6 +372,7 @@ class _EditorScreenState extends State<EditorScreen> {
       'name': 'untitled.js',
       'hasUnsavedChanges': false,
       'focusNode': FocusNode(),
+      'languageName': 'JS',
     };
     newTab['controller'] = _createController('', javascript, () {
       final isChanged = newTab['controller'].text != '';
@@ -388,17 +396,118 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   String get _languageName {
-    if (_activeTabIndex == -1 || _activePath == null) return 'JS';
-    final ext = p.extension(_activePath!).toLowerCase();
+    if (_activeTabIndex == -1) return 'JS';
+    return _openTabs[_activeTabIndex]['languageName'] as String? ?? 'TEXT';
+  }
+
+  String _getInitialLanguageName(String? path) {
+    if (path == null) return 'JS';
+    final ext = p.extension(path).toLowerCase();
     const map = {
       '.json': 'JSON',
       '.js': 'JS',
-      '.jsx': 'JSX',
+      '.jsx': 'JS',
       '.ts': 'TS',
       '.tsx': 'TSX',
       '.mjs': 'ESM',
+      '.py': 'Python',
+      '.pyw': 'Python',
+      '.html': 'HTML',
+      '.htm': 'HTML',
+      '.css': 'CSS',
+      '.dart': 'Dart',
+      '.cpp': 'C++',
+      '.hpp': 'C++',
+      '.cc': 'C++',
+      '.c': 'C',
+      '.h': 'C/C++',
+      '.md': 'Markdown',
+      '.markdown': 'Markdown',
     };
     return map[ext] ?? 'TEXT';
+  }
+
+  void _showLanguageSelector() {
+    if (_activeTabIndex == -1) return;
+
+    final languages = [
+      {'name': 'JavaScript', 'highlight': javascript, 'displayName': 'JS'},
+      {'name': 'JSON', 'highlight': json, 'displayName': 'JSON'},
+      {'name': 'Python', 'highlight': python, 'displayName': 'Python'},
+      {'name': 'HTML', 'highlight': xml, 'displayName': 'HTML'},
+      {'name': 'CSS', 'highlight': css, 'displayName': 'CSS'},
+      {'name': 'Dart', 'highlight': dart, 'displayName': 'Dart'},
+      {'name': 'C++', 'highlight': cpp, 'displayName': 'C++'},
+      {'name': 'Markdown', 'highlight': markdown, 'displayName': 'Markdown'},
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: _theme.bg,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: _theme.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Selecionar Modo de Linguagem',
+                style: TextStyle(
+                  color: _theme.textPri,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: languages.length,
+                  itemBuilder: (ctx, index) {
+                    final lang = languages[index];
+                    final isCurrent = _languageName == lang['displayName'];
+                    return ListTile(
+                      dense: true,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+                      title: Text(
+                        lang['name'] as String,
+                        style: TextStyle(
+                          color: isCurrent ? _theme.accent : _theme.textPri,
+                          fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+                          fontSize: 14,
+                        ),
+                      ),
+                      trailing: isCurrent
+                          ? Icon(Icons.check_circle, color: _theme.accent, size: 18)
+                          : null,
+                      onTap: () {
+                        setState(() {
+                          _openTabs[_activeTabIndex]['languageName'] = lang['displayName'];
+                          _activeController.language = lang['highlight'] as Mode?;
+                        });
+                        Navigator.pop(ctx);
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _openFileFromExplorer(String path) async {
@@ -442,6 +551,7 @@ class _EditorScreenState extends State<EditorScreen> {
         'hasUnsavedChanges': false,
         'isRemote': isRemote,
         'focusNode': FocusNode(),
+        'languageName': _getInitialLanguageName(path),
       };
       newTab['initialContent'] = content;
       newTab['controller'] = _createController(content, _langForPath(path), () {
@@ -567,6 +677,7 @@ class _EditorScreenState extends State<EditorScreen> {
         _openTabs[_activeTabIndex]['name'] = p.basename(finalPath);
         _openTabs[_activeTabIndex]['hasUnsavedChanges'] = false;
         _openTabs[_activeTabIndex]['initialContent'] = content;
+        _openTabs[_activeTabIndex]['languageName'] = _getInitialLanguageName(finalPath);
         _activeController.language = _langForPath(finalPath);
       });
       _saveTabsPreference();
@@ -1212,6 +1323,25 @@ class _EditorScreenState extends State<EditorScreen> {
     switch (p.extension(path).toLowerCase()) {
       case '.json':
         return json;
+      case '.py':
+      case '.pyw':
+        return python;
+      case '.html':
+      case '.htm':
+        return xml;
+      case '.css':
+        return css;
+      case '.dart':
+        return dart;
+      case '.cpp':
+      case '.hpp':
+      case '.cc':
+      case '.c':
+      case '.h':
+        return cpp;
+      case '.md':
+      case '.markdown':
+        return markdown;
       default:
         return javascript;
     }
@@ -1305,6 +1435,7 @@ class _EditorScreenState extends State<EditorScreen> {
                   }
                 });
               },
+              onLanguageTap: _showLanguageSelector,
             ),
           ],
         ),
