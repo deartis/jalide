@@ -952,6 +952,13 @@ class _EditorScreenState extends State<EditorScreen> {
           projectPath: _projectPath,
           projectFiles: _projectFiles,
           onFileTap: _openFileFromExplorer,
+          onNavigateFolder: (path) {
+            if (_isRemoteProject) {
+              _loadRemoteProjectFiles(path);
+            } else {
+              _loadProjectFiles(path);
+            }
+          },
           onPickFolder: _pickProjectFolder,
           onOpenTermux: _openTermuxWorkspace,
           onCreateFile: () => _showCreateDialog(true),
