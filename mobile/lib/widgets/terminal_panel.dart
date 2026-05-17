@@ -21,6 +21,7 @@ class TerminalPanel extends StatefulWidget {
   final TerminalMode mode;
   /// Sessão SSH ativa — obrigatório quando mode == TerminalMode.ssh
   final SshSession? sshSession;
+  final void Function(TerminalPanelState?)? onTerminalStateChanged;
 
   const TerminalPanel({
     super.key,
@@ -28,15 +29,16 @@ class TerminalPanel extends StatefulWidget {
     this.mode = TerminalMode.local,
     this.sshSession,
     this.projectPath,
+    this.onTerminalStateChanged,
   });
 
   final String? projectPath;
 
   @override
-  State<TerminalPanel> createState() => _TerminalPanelState();
+  State<TerminalPanel> createState() => TerminalPanelState();
 }
 
-class _TerminalPanelState extends State<TerminalPanel> {
+class TerminalPanelState extends State<TerminalPanel> {
   late final Terminal _terminal;
   late final TerminalController _controller;
 
@@ -46,9 +48,23 @@ class _TerminalPanelState extends State<TerminalPanel> {
   bool _ready = false;
   String? _errorMessage;
 
+  void sendInput(String data) {
+    if (!_ready) return;
+    try {
+      if (widget.mode == TerminalMode.local) {
+        _localPty?.write(utf8.encode(data));
+      } else {
+        widget.sshSession?.writeToShell(data);
+      }
+    } catch (e) {
+      debugPrint('JALIDE_TERMINAL_SEND_INPUT_ERROR: $e');
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+    widget.onTerminalStateChanged?.call(this);
     _terminal = Terminal(maxLines: 10000);
     _controller = TerminalController();
     _initialize();
@@ -204,6 +220,7 @@ class _TerminalPanelState extends State<TerminalPanel> {
 
   @override
   void dispose() {
+    widget.onTerminalStateChanged?.call(null);
     _localPty?.kill();
     _controller.dispose();
     super.dispose();

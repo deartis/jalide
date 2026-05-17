@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-enum ThemeType { dark, light, dracula }
+enum ThemeType { darkPurple, dark, light, dracula }
 
 class JalideThemeVariant {
   final Color bg;
@@ -31,6 +31,21 @@ class JalideThemeVariant {
     required this.numColor,
     required this.fnColor,
   });
+
+  static const darkPurple = JalideThemeVariant(
+    bg: Color(0xFF120E20),
+    surface: Color(0xFF181428),
+    border: Color(0xFF261F3C),
+    accent: Color(0xFFD67BFF),
+    textPri: Color(0xFFF1EAFF),
+    textMuted: Color(0xFF7A6F9B),
+    kwColor: Color(0xFFFF79C6),
+    strColor: Color(0xFF50FA7B),
+    commentColor: Color(0xFF6B5E8C),
+    varColor: Color(0xFF80DEEA),
+    numColor: Color(0xFFFFB86C),
+    fnColor: Color(0xFF00E5FF),
+  );
 
   static const dark = JalideThemeVariant(
     bg: Color(0xFF0D0D0F),
@@ -95,6 +110,7 @@ class ThemeProvider extends InheritedNotifier<ValueNotifier<ThemeType>> {
   
   JalideThemeVariant get current {
     switch (themeType) {
+      case ThemeType.darkPurple: return JalideThemeVariant.darkPurple;
       case ThemeType.dark: return JalideThemeVariant.dark;
       case ThemeType.light: return JalideThemeVariant.light;
       case ThemeType.dracula: return JalideThemeVariant.dracula;
@@ -128,6 +144,6 @@ class ThemeProvider extends InheritedNotifier<ValueNotifier<ThemeType>> {
         return ThemeType.values.byName(saved);
       }
     } catch (_) {}
-    return ThemeType.dark;
+    return ThemeType.darkPurple;
   }
 }

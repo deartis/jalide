@@ -59,6 +59,7 @@ class _EditorScreenState extends State<EditorScreen> {
   bool _hasTerminalBeenOpened = false;
   TerminalMode _terminalMode = TerminalMode.local;
   SshSession? _activeSshSession;
+  TerminalPanelState? _activeTerminalState;
   bool _isRemoteProject = false;
   final SshProfileManager _sshProfileManager = SshProfileManager();
 
@@ -70,18 +71,37 @@ class _EditorScreenState extends State<EditorScreen> {
   double _fontSize = 14.0;
 
   // Teclado auxiliar
-  static const _auxKeys = [
-    'Tab',
-    '{ }',
-    '[ ]',
-    '( )',
-    '" "',
-    "' '",
-    '; :',
-    '= >',
-    '=>',
-    '…',
-  ];
+  bool _ctrlActive = false;
+
+  List<String> get _currentAuxKeys {
+    if (_ctrlActive) {
+      return [
+        'Ctrl',
+        'Z (Undo)',
+        'Y (Redo)',
+        'A (All)',
+        'C (Copy)',
+        'V (Paste)',
+        'X (Cut)',
+      ];
+    }
+    return [
+      'Tab',
+      'Ctrl',
+      '↑',
+      '↓',
+      '←',
+      '→',
+      '{ }',
+      '[ ]',
+      '( )',
+      '" "',
+      "' '",
+      '; :',
+      '= >',
+      '=>',
+    ];
+  }
 
   @override
   void initState() {
@@ -543,6 +563,203 @@ class _EditorScreenState extends State<EditorScreen> {
     _activeFocusNode.requestFocus();
   }
 
+  void _handleAuxKeyTap(String key) {
+    final bool isTerminalActive = _isTerminalVisible &&
+        _activeTerminalState != null &&
+        (_activeTabIndex == -1 || !_activeFocusNode.hasFocus);
+
+    if (isTerminalActive) {
+      if (key == 'Ctrl') {
+        setState(() {
+          _ctrlActive = !_ctrlActive;
+        });
+        return;
+      }
+
+      if (_ctrlActive) {
+        setState(() {
+          _ctrlActive = false;
+        });
+
+        if (key.startsWith('Z')) {
+          _activeTerminalState!.sendInput("\x1a");
+        } else if (key.startsWith('Y')) {
+          _activeTerminalState!.sendInput("\x19");
+        } else if (key.startsWith('A')) {
+          _activeTerminalState!.sendInput("\x01");
+        } else if (key.startsWith('C')) {
+          _activeTerminalState!.sendInput("\x03");
+          _showToast('Ctrl+C enviado');
+        } else if (key.startsWith('V')) {
+          Clipboard.getData(Clipboard.kTextPlain).then((data) {
+            if (data != null && data.text != null) {
+              _activeTerminalState!.sendInput(data.text!);
+            }
+          });
+        } else if (key.startsWith('X')) {
+          _activeTerminalState!.sendInput("\x18");
+        }
+        return;
+      }
+
+      if (key == 'Tab') {
+        _activeTerminalState!.sendInput("\t");
+      } else if (key == '←') {
+        _activeTerminalState!.sendInput("\x1b[D");
+      } else if (key == '→') {
+        _activeTerminalState!.sendInput("\x1b[C");
+      } else if (key == '↑') {
+        _activeTerminalState!.sendInput("\x1b[A");
+      } else if (key == '↓') {
+        _activeTerminalState!.sendInput("\x1b[B");
+      } else {
+        _activeTerminalState!.sendInput(key.replaceAll(' ', ''));
+      }
+      return;
+    }
+
+    if (_activeTabIndex == -1) return;
+
+    if (key == 'Ctrl') {
+      setState(() {
+        _ctrlActive = !_ctrlActive;
+      });
+      return;
+    }
+
+    if (_ctrlActive) {
+      setState(() {
+        _ctrlActive = false;
+      });
+
+      if (key.startsWith('Z')) {
+        try {
+          (_activeController as dynamic).undo();
+        } catch (_) {
+          Actions.maybeInvoke<UndoTextIntent>(
+            context,
+            const UndoTextIntent(SelectionChangedCause.keyboard),
+          );
+        }
+      } else if (key.startsWith('Y')) {
+        try {
+          (_activeController as dynamic).redo();
+        } catch (_) {
+          Actions.maybeInvoke<RedoTextIntent>(
+            context,
+            const RedoTextIntent(SelectionChangedCause.keyboard),
+          );
+        }
+      } else if (key.startsWith('A')) {
+        _activeController.selection = TextSelection(
+          baseOffset: 0,
+          extentOffset: _activeController.text.length,
+        );
+      } else if (key.startsWith('C')) {
+        final sel = _activeController.selection;
+        if (sel.isValid && !sel.isCollapsed) {
+          Clipboard.setData(ClipboardData(
+            text: _activeController.text.substring(sel.start, sel.end),
+          ));
+          _showToast('Copiado para a área de transferência');
+        }
+      } else if (key.startsWith('V')) {
+        Clipboard.getData(Clipboard.kTextPlain).then((data) {
+          if (data != null && data.text != null) {
+            final text = _activeController.text;
+            final sel = _activeController.selection;
+            if (sel.isValid) {
+              final before = text.substring(0, sel.start);
+              final after = text.substring(sel.end);
+              _activeController.text = before + data.text! + after;
+              _activeController.selection = TextSelection.collapsed(
+                offset: sel.start + data.text!.length,
+              );
+            }
+          }
+        });
+      } else if (key.startsWith('X')) {
+        final sel = _activeController.selection;
+        if (sel.isValid && !sel.isCollapsed) {
+          final text = _activeController.text;
+          final selectedText = text.substring(sel.start, sel.end);
+          Clipboard.setData(ClipboardData(text: selectedText));
+          final before = text.substring(0, sel.start);
+          final after = text.substring(sel.end);
+          _activeController.text = before + after;
+          _activeController.selection = TextSelection.collapsed(offset: sel.start);
+          _showToast('Recortado');
+        }
+      }
+      _activeFocusNode.requestFocus();
+      return;
+    }
+
+    if (key == 'Tab') {
+      _insertSnippet('  ');
+    } else if (key == '←') {
+      final sel = _activeController.selection;
+      if (sel.isValid && sel.start > 0) {
+        _activeController.selection = TextSelection.collapsed(
+          offset: sel.start - 1,
+        );
+      }
+    } else if (key == '→') {
+      final sel = _activeController.selection;
+      if (sel.isValid && sel.start < _activeController.text.length) {
+        _activeController.selection = TextSelection.collapsed(
+          offset: sel.start + 1,
+        );
+      }
+    } else if (key == '↑') {
+      final text = _activeController.text;
+      final sel = _activeController.selection;
+      if (sel.isValid) {
+        final currentOffset = sel.start;
+        final beforeText = text.substring(0, currentOffset);
+        final linesBefore = beforeText.split('\n');
+        if (linesBefore.length > 1) {
+          final currentLineText = linesBefore.last;
+          final currentColumn = currentLineText.length;
+          final previousLineText = linesBefore[linesBefore.length - 2];
+          final previousLineStart =
+              beforeText.length - currentColumn - 1 - previousLineText.length;
+          final targetColumn = currentColumn < previousLineText.length
+              ? currentColumn
+              : previousLineText.length;
+          _activeController.selection = TextSelection.collapsed(
+            offset: previousLineStart + targetColumn,
+          );
+        }
+      }
+    } else if (key == '↓') {
+      final text = _activeController.text;
+      final sel = _activeController.selection;
+      if (sel.isValid) {
+        final currentOffset = sel.start;
+        final beforeText = text.substring(0, currentOffset);
+        final afterText = text.substring(currentOffset);
+        final linesBefore = beforeText.split('\n');
+        final currentLineText = linesBefore.isNotEmpty ? linesBefore.last : '';
+        final currentColumn = currentLineText.length;
+
+        final linesAfter = afterText.split('\n');
+        if (linesAfter.length > 1) {
+          final nextLineText = linesAfter[1];
+          final nextLineStart = beforeText.length + linesAfter[0].length + 1;
+          final targetColumn =
+              currentColumn < nextLineText.length ? currentColumn : nextLineText.length;
+          _activeController.selection = TextSelection.collapsed(
+            offset: nextLineStart + targetColumn,
+          );
+        }
+      }
+    } else {
+      _insertSnippet(key);
+    }
+    _activeFocusNode.requestFocus();
+  }
+
   void _showToast(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -1000,13 +1217,20 @@ class _EditorScreenState extends State<EditorScreen> {
                           mode: _terminalMode,
                           sshSession: _activeSshSession,
                           projectPath: _projectPath,
+                          onTerminalStateChanged: (state) {
+                            _activeTerminalState = state;
+                          },
                         ),
                       ),
                     ),
                 ],
               ),
             ),
-            AuxKeyboard(auxKeys: _auxKeys, onKeyTap: _insertSnippet),
+            AuxKeyboard(
+              auxKeys: _currentAuxKeys,
+              ctrlActive: _ctrlActive,
+              onKeyTap: _handleAuxKeyTap,
+            ),
             StatusBar(
               languageName: _languageName,
               hasUnsavedChanges: _activeHasUnsavedChanges,
@@ -1268,9 +1492,12 @@ class _EditorScreenState extends State<EditorScreen> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: ThemeType.values.map((type) {
+              final label = type == ThemeType.darkPurple
+                  ? 'DARK PURPLE'
+                  : type.name.toUpperCase();
               return RadioListTile<ThemeType>(
                 title: Text(
-                  type.name.toUpperCase(),
+                  label,
                   style: TextStyle(color: _theme.textPri, fontSize: 14),
                 ),
                 value: type,
