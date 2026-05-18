@@ -11,7 +11,7 @@
 
 ## Sobre
 
-JALIDE é uma IDE móvel moderna desenvolvida em Flutter, focada em **JavaScript / Node.js**. Desenvolvida para quando você tem apenas o celular à mão — sem abrir mão de produtividade.
+JALIDE é uma IDE móvel moderna e poderosa desenvolvida em Flutter, com suporte **multi-linguagem** (JavaScript, Python, Dart, C, C++ e Shell Script). Ela foi projetada para transformar seu Android em um ambiente de desenvolvimento robusto, ideal para quando você está em trânsito ou tem apenas o celular à mão — sem abrir mão de produtividade e recursos avançados.
 
 ---
 
@@ -20,6 +20,8 @@ JALIDE é uma IDE móvel moderna desenvolvida em Flutter, focada em **JavaScript
 | | Funcionalidade | Descrição |
 |---|---|---|
 | 📝 | **Editor profissional** | Syntax highlighting, zoom dinâmico e múltiplas abas |
+| ▶️ | **Play Inteligente** | Botão de execução direta na barra superior que roda códigos com um toque (Node, Python, Dart, C/C++, Bash) |
+| 💾 | **Auto-Save Background** | Salvamento automático silencioso (com debounce de 1.5s) e ao trocar de abas no editor |
 | 🐚 | **Terminal híbrido** | Alterne entre terminal local (Android) e remoto via SSH |
 | ⚡ | **Termux Magic** | Configura Node.js + SSH no Termux com um clique |
 | 📂 | **SFTP nativo** | Edite arquivos remotos como se fossem locais |
@@ -88,6 +90,15 @@ git commit -m 'feat: minha contribuição'
 # 4. Push e abra um Pull Request
 git push origin minha-feature
 ```
+
+---
+
+## 💖 Apoie o Projeto
+
+Se o JALIDE te ajuda a programar, considere apoiar o projeto com uma estrela ⭐ no repositório ou fazendo uma contribuição voluntária via PIX direto pelo aplicativo!
+
+Chave PIX do projeto:
+`40dccccc-04fa-4c63-959d-f671794d5f27`
 
 ---
 
