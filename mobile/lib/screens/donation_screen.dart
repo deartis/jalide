@@ -15,7 +15,7 @@ class _DonationScreenState extends State<DonationScreen>
   late Animation<double> _heartScale;
 
   // Chave local (fallback)
-  String pixKey = "11049805763";
+  String pixKey = "40dccccc-04fa-4c63-959d-f671794d5f27";
   bool _isLoading = true;
 
   @override

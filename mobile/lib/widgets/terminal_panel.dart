@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
@@ -44,6 +45,7 @@ class TerminalPanelState extends State<TerminalPanel> {
 
   // Local PTY
   Pty? _localPty;
+  StreamSubscription<Uint8List>? _ptySubscription;
 
   bool _ready = false;
   String? _errorMessage;
@@ -111,7 +113,7 @@ class TerminalPanelState extends State<TerminalPanel> {
     );
 
     // PTY → terminal: decode bytes → String
-    _localPty!.output.listen((data) {
+    _ptySubscription = _localPty!.output.listen((data) {
       _terminal.write(utf8.decode(data, allowMalformed: true));
     });
 
@@ -235,6 +237,8 @@ class TerminalPanelState extends State<TerminalPanel> {
   @override
   void dispose() {
     widget.onTerminalStateChanged?.call(null);
+    _ptySubscription?.cancel();
+    _ptySubscription = null;
     _localPty?.kill();
     _controller.dispose();
     super.dispose();
@@ -447,16 +451,33 @@ class TerminalPanelState extends State<TerminalPanel> {
     try {
       final uri = Uri.parse(safUri);
       final decodedPath = Uri.decodeComponent(uri.path);
+      
+      // Encontra a parte depois de tree/ ou document/
+      String? treeOrDocPart;
       final treeIndex = decodedPath.indexOf('tree/');
       if (treeIndex != -1) {
-        final treePart = decodedPath.substring(treeIndex + 5);
-        if (treePart.startsWith('primary:')) {
-          final relativePath = treePart.substring(8);
+        treeOrDocPart = decodedPath.substring(treeIndex + 5);
+      } else {
+        final docIndex = decodedPath.indexOf('document/');
+        if (docIndex != -1) {
+          treeOrDocPart = decodedPath.substring(docIndex + 9);
+        }
+      }
+      
+      if (treeOrDocPart != null) {
+        if (treeOrDocPart.startsWith('primary:')) {
+          final relativePath = treeOrDocPart.substring(8);
           return '/storage/emulated/0/$relativePath';
-        } else if (treePart.startsWith('raw:')) {
-          return treePart.substring(4);
-        } else if (treePart.startsWith('/')) {
-          return treePart;
+        } else if (treeOrDocPart.startsWith('home:')) {
+          final relativePath = treeOrDocPart.substring(5);
+          return '/data/data/com.termux/files/home/$relativePath';
+        } else if (treeOrDocPart.startsWith('usr:')) {
+          final relativePath = treeOrDocPart.substring(4);
+          return '/data/data/com.termux/files/usr/$relativePath';
+        } else if (treeOrDocPart.startsWith('raw:')) {
+          return treeOrDocPart.substring(4);
+        } else if (treeOrDocPart.startsWith('/')) {
+          return treeOrDocPart;
         }
       }
     } catch (e) {

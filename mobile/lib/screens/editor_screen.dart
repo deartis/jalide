@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
@@ -77,6 +78,8 @@ class _EditorScreenState extends State<EditorScreen> {
 
   // Configurações
   double _fontSize = 14.0;
+  bool _autoSaveEnabled = true;
+  Timer? _autoSaveTimer;
 
   // Teclado auxiliar
   bool _ctrlActive = false;
@@ -122,6 +125,12 @@ class _EditorScreenState extends State<EditorScreen> {
 
   Future<void> _loadPreferences() async {
     final prefs = await SharedPreferences.getInstance();
+
+    // Load Auto-Save Setting
+    final savedAutoSave = prefs.getBool('autosave_enabled') ?? true;
+    if (mounted) {
+      setState(() => _autoSaveEnabled = savedAutoSave);
+    }
 
     // Load Font Size
     final savedFontSize = prefs.getDouble('last_font_size');
@@ -510,6 +519,136 @@ class _EditorScreenState extends State<EditorScreen> {
     );
   }
 
+  Future<void> _runActiveFile() async {
+    if (_activeTabIndex == -1) {
+      _showToast('Nenhum arquivo aberto');
+      return;
+    }
+
+    if (_activePath == null) {
+      _showToast('Por favor, salve o arquivo antes de rodar!');
+      return;
+    }
+
+    // Se o arquivo tiver alterações não salvas, salva antes de rodar!
+    if (_activeHasUnsavedChanges) {
+      _showToast('Salvando alterações...');
+      await _saveFile();
+    }
+
+    // Garante que o terminal está visível
+    if (!_isTerminalVisible) {
+      setState(() {
+        _isTerminalVisible = true;
+        _hasTerminalBeenOpened = true;
+      });
+      // Dá um tempinho para o terminal renderizar se for a primeira vez
+      await Future.delayed(const Duration(milliseconds: 400));
+    }
+
+    if (_activeTerminalState == null) {
+      _showToast('Aguardando inicialização do terminal...');
+      return;
+    }
+
+    final physicalActivePath = _resolveSafPath(_activePath!);
+    final physicalProjectPath = _projectPath != null ? _resolveSafPath(_projectPath!) : null;
+
+    String fileRunPath = '';
+    if (physicalProjectPath != null && physicalActivePath.startsWith(physicalProjectPath)) {
+      fileRunPath = p.relative(physicalActivePath, from: physicalProjectPath);
+      if (!fileRunPath.startsWith('.')) {
+        fileRunPath = './$fileRunPath';
+      }
+    } else {
+      fileRunPath = physicalActivePath;
+    }
+
+    final ext = p.extension(physicalActivePath).toLowerCase();
+    String command = '';
+    switch (ext) {
+      case '.js':
+      case '.mjs':
+        command = 'node "$fileRunPath"';
+        break;
+      case '.py':
+      case '.pyw':
+        command = 'python "$fileRunPath"';
+        break;
+      case '.dart':
+        command = 'dart run "$fileRunPath"';
+        break;
+      case '.cpp':
+      case '.cc':
+        final binName = p.basenameWithoutExtension(fileRunPath);
+        final parentPath = p.dirname(fileRunPath);
+        final outBin = parentPath == '.' ? './$binName' : '$parentPath/$binName';
+        command = 'clang++ "$fileRunPath" -o "$outBin" && "$outBin"';
+        break;
+      case '.c':
+        final cBinName = p.basenameWithoutExtension(fileRunPath);
+        final cParentPath = p.dirname(fileRunPath);
+        final cOutBin = cParentPath == '.' ? './$cBinName' : '$cParentPath/$cBinName';
+        command = 'clang "$fileRunPath" -o "$cOutBin" && "$cOutBin"';
+        break;
+      case '.sh':
+        command = 'bash "$fileRunPath"';
+        break;
+      case '.html':
+      case '.htm':
+        _showToast('Iniciando servidor Web na porta 8000...');
+        command = 'python -m http.server 8000';
+        break;
+      default:
+        command = 'cat "$fileRunPath"';
+        break;
+    }
+
+    if (command.isNotEmpty) {
+      _activeTerminalState!.sendInput('$command\n');
+    }
+  }
+
+  String _resolveSafPath(String safUri) {
+    if (!safUri.startsWith('content://')) return safUri;
+    try {
+      final uri = Uri.parse(safUri);
+      final decodedPath = Uri.decodeComponent(uri.path);
+      
+      // Encontra a parte depois de tree/ ou document/ (document/ tem precedência para URIs de arquivos sob pastas)
+      String? treeOrDocPart;
+      final docIndex = decodedPath.indexOf('document/');
+      if (docIndex != -1) {
+        treeOrDocPart = decodedPath.substring(docIndex + 9);
+      } else {
+        final treeIndex = decodedPath.indexOf('tree/');
+        if (treeIndex != -1) {
+          treeOrDocPart = decodedPath.substring(treeIndex + 5);
+        }
+      }
+      
+      if (treeOrDocPart != null) {
+        if (treeOrDocPart.startsWith('primary:')) {
+          final relativePath = treeOrDocPart.substring(8);
+          return '/storage/emulated/0/$relativePath';
+        } else if (treeOrDocPart.startsWith('home:')) {
+          final relativePath = treeOrDocPart.substring(5);
+          return '/data/data/com.termux/files/home/$relativePath';
+        } else if (treeOrDocPart.startsWith('usr:')) {
+          final relativePath = treeOrDocPart.substring(4);
+          return '/data/data/com.termux/files/usr/$relativePath';
+        } else if (treeOrDocPart.startsWith('raw:')) {
+          return treeOrDocPart.substring(4);
+        } else if (treeOrDocPart.startsWith('/')) {
+          return treeOrDocPart;
+        }
+      }
+    } catch (e) {
+      debugPrint('Error resolving SAF path: $e');
+    }
+    return safUri;
+  }
+
   Future<void> _openFileFromExplorer(String path) async {
     try {
       String content;
@@ -559,6 +698,9 @@ class _EditorScreenState extends State<EditorScreen> {
         if (newTab['hasUnsavedChanges'] != isChanged) {
           setState(() => newTab['hasUnsavedChanges'] = isChanged);
         }
+        if (isChanged && _autoSaveEnabled) {
+          _triggerAutoSave(newTab);
+        }
       });
 
       setState(() {
@@ -598,7 +740,10 @@ class _EditorScreenState extends State<EditorScreen> {
         await file.writeAsString(_activeController.text);
       }
 
-      setState(() => _openTabs[_activeTabIndex]['hasUnsavedChanges'] = false);
+      setState(() {
+        _openTabs[_activeTabIndex]['hasUnsavedChanges'] = false;
+        _openTabs[_activeTabIndex]['initialContent'] = _activeController.text;
+      });
       if (!mounted) return;
       _showToast('Salvo com sucesso');
     } catch (e) {
@@ -688,6 +833,82 @@ class _EditorScreenState extends State<EditorScreen> {
       _showToast('Erro ao salvar como: $e');
       debugPrint('JALIDE_SAVE_AS_ERROR: $e');
     }
+  }
+
+  void _triggerAutoSave(Map<String, dynamic> tab) {
+    _autoSaveTimer?.cancel();
+    _autoSaveTimer = Timer(const Duration(milliseconds: 1500), () async {
+      if (!mounted) return;
+      final tabIndex = _openTabs.indexOf(tab);
+      if (tabIndex != -1 && tab['hasUnsavedChanges'] == true && tab['path'] != null) {
+        try {
+          final path = tab['path'] as String;
+          final controller = tab['controller'] as CodeController;
+          final isRemote = tab['isRemote'] == true;
+          
+          debugPrint('JALIDE_AUTOSAVE: $path');
+          
+          if (path.startsWith('content://')) {
+            await _termuxChannel.invokeMethod('writeSafFile', {
+              'uri': path,
+              'content': controller.text,
+            });
+          } else if (isRemote && _activeSshSession != null) {
+            await _activeSshSession!.writeFile(path, controller.text);
+          } else {
+            final file = File(path);
+            await file.writeAsString(controller.text);
+          }
+          
+          setState(() {
+            tab['hasUnsavedChanges'] = false;
+            tab['initialContent'] = controller.text;
+          });
+        } catch (e) {
+          debugPrint('Auto-save error: $e');
+        }
+      }
+    });
+  }
+
+  Future<void> _instantSaveTab(Map<String, dynamic> tab) async {
+    if (tab['hasUnsavedChanges'] == true && tab['path'] != null) {
+      try {
+        final path = tab['path'] as String;
+        final controller = tab['controller'] as CodeController;
+        final isRemote = tab['isRemote'] == true;
+        
+        debugPrint('JALIDE_INSTANT_SAVE: $path');
+        
+        if (path.startsWith('content://')) {
+          await _termuxChannel.invokeMethod('writeSafFile', {
+            'uri': path,
+            'content': controller.text,
+          });
+        } else if (isRemote && _activeSshSession != null) {
+          await _activeSshSession!.writeFile(path, controller.text);
+        } else {
+          final file = File(path);
+          await file.writeAsString(controller.text);
+        }
+        
+        setState(() {
+          tab['hasUnsavedChanges'] = false;
+          tab['initialContent'] = controller.text;
+        });
+      } catch (e) {
+        debugPrint('Instant save error: $e');
+      }
+    }
+  }
+
+  Future<void> _toggleAutoSave() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _autoSaveEnabled = !_autoSaveEnabled;
+    });
+    await prefs.setBool('autosave_enabled', _autoSaveEnabled);
+    _showToast(_autoSaveEnabled ? 'Auto-Save ativado' : 'Auto-Save desativado');
   }
 
   // Insere snippet no cursor com auto-indentação
@@ -1384,6 +1605,9 @@ class _EditorScreenState extends State<EditorScreen> {
                 tabs: _openTabs,
                 activeIndex: _activeTabIndex,
                 onTabTap: (i) {
+                  if (_activeTabIndex != -1 && _activeTabIndex != i) {
+                    _instantSaveTab(_openTabs[_activeTabIndex]);
+                  }
                   setState(() => _activeTabIndex = i);
                   _saveTabsPreference();
                 },
@@ -1411,7 +1635,13 @@ class _EditorScreenState extends State<EditorScreen> {
                           sshSession: _activeSshSession,
                           projectPath: _projectPath,
                           onTerminalStateChanged: (state) {
-                            _activeTerminalState = state;
+                            if (state != null) {
+                              _activeTerminalState = state;
+                            } else {
+                              if (_activeTerminalState != null && !_activeTerminalState!.mounted) {
+                                _activeTerminalState = null;
+                              }
+                            }
                           },
                         ),
                       ),
@@ -1520,6 +1750,15 @@ class _EditorScreenState extends State<EditorScreen> {
       ),
       actions: [
         IconButton(
+          onPressed: _activeTabIndex != -1 ? _runActiveFile : null,
+          icon: Icon(
+            Icons.play_arrow_rounded,
+            size: 24,
+            color: _activeTabIndex != -1 ? const Color(0xFF50FA7B) : _theme.textMuted,
+          ),
+          tooltip: 'Executar arquivo',
+        ),
+        IconButton(
           onPressed: _openFile,
           icon: const Icon(Icons.folder_open_outlined, size: 20),
           color: _theme.textMuted,
@@ -1557,6 +1796,7 @@ class _EditorScreenState extends State<EditorScreen> {
             if (v == 'zoom_in') _updateFontSize(_fontSize + 2);
             if (v == 'zoom_out') _updateFontSize(_fontSize - 2);
             if (v == 'ssh') _openSshScreen();
+            if (v == 'autosave') _toggleAutoSave();
           },
           itemBuilder: (_) => [
             _menuItem('new', 'Novo arquivo', Icons.add_outlined),
@@ -1564,6 +1804,12 @@ class _EditorScreenState extends State<EditorScreen> {
             const PopupMenuDivider(),
             _menuItem('zoom_in', 'Aumentar fonte', Icons.zoom_in),
             _menuItem('zoom_out', 'Diminuir fonte', Icons.zoom_out),
+            const PopupMenuDivider(),
+            _menuItem(
+              'autosave',
+              _autoSaveEnabled ? 'Auto-Save: [ON]' : 'Auto-Save: [OFF]',
+              _autoSaveEnabled ? Icons.toggle_on_outlined : Icons.toggle_off_outlined,
+            ),
             const PopupMenuDivider(),
             _menuItem('ssh', 'SSH Remote', Icons.cloud_outlined),
             _menuItem('theme', 'Mudar Tema', Icons.palette_outlined),

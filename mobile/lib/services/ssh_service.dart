@@ -133,10 +133,29 @@ class SshSession {
 
     // Shell → terminal
     _shellSession!.stdout.listen(
-      (data) => _outputController?.add(data),
-      onDone: () => _outputController?.close(),
+      (data) {
+        if (_outputController != null && !_outputController!.isClosed) {
+          _outputController!.add(data);
+        }
+      },
+      onError: (e) => debugPrint('SSH stdout error: $e'),
+      onDone: () {
+        if (_outputController != null && !_outputController!.isClosed) {
+          _outputController!.close();
+        }
+      },
+      cancelOnError: false,
     );
-    _shellSession!.stderr.listen((data) => _outputController?.add(data));
+
+    _shellSession!.stderr.listen(
+      (data) {
+        if (_outputController != null && !_outputController!.isClosed) {
+          _outputController!.add(data);
+        }
+      },
+      onError: (e) => debugPrint('SSH stderr error: $e'),
+      cancelOnError: false,
+    );
   }
 
   /// Redimensiona o PTY remoto (quando o usuário rotaciona o device)
