@@ -7,6 +7,12 @@
 [![License](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
 [![Status](https://img.shields.io/badge/Status-Em%20desenvolvimento-orange?style=flat-square)]()
 
+<p align="center">
+  <img src="img/dracula_editor.png" width="30%" alt="JALIDE Dracula Theme" />
+  <img src="img/classic_editor.png" width="30%" alt="JALIDE Classic Orange" />
+  <img src="img/remote_explorer.png" width="30%" alt="JALIDE Remote File Explorer" />
+</p>
+
 ---
 
 ## Sobre
