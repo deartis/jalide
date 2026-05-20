@@ -9,8 +9,9 @@ void main() async {
 
   for (final file in files) {
     if (file.path.contains('jalide_theme.dart') ||
-        file.path.contains('main.dart'))
+        file.path.contains('main.dart')) {
       continue;
+    }
 
     var content = await file.readAsString();
     if (!content.contains('JalideTheme.')) continue;
@@ -49,6 +50,7 @@ void main() async {
     }
 
     await file.writeAsString(content);
+    // ignore: avoid_print
     print('Updated \${file.path}');
   }
 }

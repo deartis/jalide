@@ -70,6 +70,7 @@ class _EditorScreenState extends State<EditorScreen> {
   SshSession? _activeSshSession;
   TerminalPanelState? _activeTerminalState;
   bool _isRemoteProject = false;
+  bool _isSaving = false;
   final SshProfileManager _sshProfileManager = SshProfileManager();
 
   // Explorer de Projeto
@@ -721,6 +722,12 @@ class _EditorScreenState extends State<EditorScreen> {
       await _saveFileAs();
       return;
     }
+    if (_isSaving) {
+      debugPrint('JALIDE_SAVE_BLOCKED: Save already in progress');
+      return;
+    }
+
+    setState(() => _isSaving = true);
     try {
       debugPrint('JALIDE_ATTEMPT_SAVE: $_activePath');
 
@@ -749,6 +756,10 @@ class _EditorScreenState extends State<EditorScreen> {
     } catch (e) {
       _showToast('Erro ao salvar: $e');
       debugPrint('JALIDE_SAVE_ERROR: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
     }
   }
 
@@ -839,8 +850,14 @@ class _EditorScreenState extends State<EditorScreen> {
     _autoSaveTimer?.cancel();
     _autoSaveTimer = Timer(const Duration(milliseconds: 1500), () async {
       if (!mounted) return;
+      if (_isSaving) {
+        // Se já estiver salvando, reagenda o auto-salvamento para daqui a 1.5s
+        _triggerAutoSave(tab);
+        return;
+      }
       final tabIndex = _openTabs.indexOf(tab);
       if (tabIndex != -1 && tab['hasUnsavedChanges'] == true && tab['path'] != null) {
+        setState(() => _isSaving = true);
         try {
           final path = tab['path'] as String;
           final controller = tab['controller'] as CodeController;
@@ -866,6 +883,10 @@ class _EditorScreenState extends State<EditorScreen> {
           });
         } catch (e) {
           debugPrint('Auto-save error: $e');
+        } finally {
+          if (mounted) {
+            setState(() => _isSaving = false);
+          }
         }
       }
     });
@@ -873,6 +894,17 @@ class _EditorScreenState extends State<EditorScreen> {
 
   Future<void> _instantSaveTab(Map<String, dynamic> tab) async {
     if (tab['hasUnsavedChanges'] == true && tab['path'] != null) {
+      if (_isSaving) {
+        // Se já está salvando, aguarda até que conclua (máximo de 2 segundos)
+        int retries = 0;
+        while (_isSaving && retries < 10 && mounted) {
+          await Future.delayed(const Duration(milliseconds: 200));
+          retries++;
+        }
+      }
+
+      if (!mounted) return;
+      setState(() => _isSaving = true);
       try {
         final path = tab['path'] as String;
         final controller = tab['controller'] as CodeController;
@@ -898,6 +930,10 @@ class _EditorScreenState extends State<EditorScreen> {
         });
       } catch (e) {
         debugPrint('Instant save error: $e');
+      } finally {
+        if (mounted) {
+          setState(() => _isSaving = false);
+        }
       }
     }
   }
@@ -1449,7 +1485,7 @@ class _EditorScreenState extends State<EditorScreen> {
     }
   }
 
-  Future<void> _showCreateDialog(bool isFile) async {
+  Future<void> _showCreateDialog(bool isFile, String? basePath) async {
     final controller = TextEditingController();
     final name = await showDialog<String>(
       context: context,
@@ -1488,13 +1524,14 @@ class _EditorScreenState extends State<EditorScreen> {
     );
 
     if (name != null && name.trim().isNotEmpty) {
-      await _createNewEntity(name.trim(), isFile);
+      await _createNewEntity(name.trim(), isFile, basePath: basePath);
     }
   }
 
-  Future<void> _createNewEntity(String name, bool isFile) async {
-    if (_projectPath == null) return;
-    final path = p.join(_projectPath!, name);
+  Future<void> _createNewEntity(String name, bool isFile, {String? basePath}) async {
+    final targetBasePath = basePath ?? _projectPath;
+    if (targetBasePath == null) return;
+    final path = p.join(targetBasePath, name);
 
     try {
       if (_isRemoteProject && _activeSshSession != null) {
@@ -1592,8 +1629,8 @@ class _EditorScreenState extends State<EditorScreen> {
           },
           onPickFolder: _pickProjectFolder,
           onOpenTermux: _openTermuxWorkspace,
-          onCreateFile: () => _showCreateDialog(true),
-          onCreateFolder: () => _showCreateDialog(false),
+          onCreateFile: (basePath) => _showCreateDialog(true, basePath),
+          onCreateFolder: (basePath) => _showCreateDialog(false, basePath),
           termuxChannel: _termuxChannel,
           sshSession: _activeSshSession,
           isRemoteProject: _isRemoteProject,
@@ -1627,7 +1664,7 @@ class _EditorScreenState extends State<EditorScreen> {
                         maintainState: true,
                         child: TerminalPanel(
                           key: ValueKey(
-                            'term_${_terminalMode.name}_${_activeSshSession?.profile.id}_$_projectPath',
+                            'term_${_terminalMode.name}_${_activeSshSession?.profile.id}',
                           ),
                           onClose: () =>
                               setState(() => _isTerminalVisible = false),
@@ -1797,6 +1834,7 @@ class _EditorScreenState extends State<EditorScreen> {
             if (v == 'zoom_out') _updateFontSize(_fontSize - 2);
             if (v == 'ssh') _openSshScreen();
             if (v == 'autosave') _toggleAutoSave();
+            if (v == 'exit') SystemNavigator.pop();
           },
           itemBuilder: (_) => [
             _menuItem('new', 'Novo arquivo', Icons.add_outlined),
@@ -1813,6 +1851,8 @@ class _EditorScreenState extends State<EditorScreen> {
             const PopupMenuDivider(),
             _menuItem('ssh', 'SSH Remote', Icons.cloud_outlined),
             _menuItem('theme', 'Mudar Tema', Icons.palette_outlined),
+            const PopupMenuDivider(),
+            _menuItem('exit', 'Sair da aplicação', Icons.exit_to_app),
           ],
           icon: Icon(Icons.more_vert, color: _theme.textMuted, size: 20),
         ),
@@ -1925,28 +1965,30 @@ class _EditorScreenState extends State<EditorScreen> {
             'Selecionar Tema',
             style: TextStyle(color: _theme.textPri),
           ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: ThemeType.values.map((type) {
-              final label = type == ThemeType.darkPurple
-                  ? 'DARK PURPLE'
-                  : type.name.toUpperCase();
-              return RadioListTile<ThemeType>(
-                title: Text(
-                  label,
-                  style: TextStyle(color: _theme.textPri, fontSize: 14),
-                ),
-                value: type,
-                groupValue: provider.themeType,
-                activeColor: _theme.accent,
-                onChanged: (ThemeType? value) {
-                  if (value != null) {
-                    provider.setTheme(value);
-                    Navigator.pop(context);
-                  }
-                },
-              );
-            }).toList(),
+          content: RadioGroup<ThemeType>(
+            groupValue: provider.themeType,
+            onChanged: (ThemeType? value) {
+              if (value != null) {
+                provider.setTheme(value);
+                Navigator.pop(context);
+              }
+            },
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: ThemeType.values.map((type) {
+                final label = type == ThemeType.darkPurple
+                    ? 'DARK PURPLE'
+                    : type.name.toUpperCase();
+                return RadioListTile<ThemeType>(
+                  title: Text(
+                    label,
+                    style: TextStyle(color: _theme.textPri, fontSize: 14),
+                  ),
+                  value: type,
+                  activeColor: _theme.accent,
+                );
+              }).toList(),
+            ),
           ),
         );
       },

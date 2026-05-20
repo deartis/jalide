@@ -72,6 +72,25 @@ class TerminalPanelState extends State<TerminalPanel> {
     _initialize();
   }
 
+  @override
+  void didUpdateWidget(covariant TerminalPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.projectPath != oldWidget.projectPath && _ready) {
+      final updatedPath = widget.projectPath;
+      if (updatedPath != null) {
+        if (widget.mode == TerminalMode.local) {
+          var workingDir = updatedPath;
+          if (workingDir.startsWith('content://')) {
+            workingDir = _resolveSafPath(workingDir);
+          }
+          _localPty?.write(utf8.encode('cd "${workingDir.replaceAll('"', '\\"')}"\n'));
+        } else if (widget.mode == TerminalMode.ssh) {
+          widget.sshSession?.writeToShell('cd "${updatedPath.replaceAll('"', '\\"')}"\n');
+        }
+      }
+    }
+  }
+
   Future<void> _initialize() async {
     try {
       if (widget.mode == TerminalMode.local) {
@@ -143,9 +162,14 @@ class TerminalPanelState extends State<TerminalPanel> {
     );
 
     // SSH output → terminal: decode bytes → String
-    session.outputStream!.listen((data) {
-      _terminal.write(utf8.decode(data, allowMalformed: true));
-    });
+    _ptySubscription = session.outputStream!.listen(
+      (data) {
+        _terminal.write(utf8.decode(data, allowMalformed: true));
+      },
+      onError: (e) => debugPrint('SSH terminal stream error: $e'),
+      onDone: () => debugPrint('SSH terminal stream closed'),
+      cancelOnError: false,
+    );
 
     // Terminal → SSH input: String enviado diretamente
     _terminal.onOutput = (data) => session.writeToShell(data);

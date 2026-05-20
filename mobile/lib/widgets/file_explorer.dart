@@ -14,8 +14,8 @@ class FileExplorerDrawer extends StatefulWidget {
   final Function(String) onNavigateFolder;
   final VoidCallback onPickFolder;
   final VoidCallback onOpenTermux;
-  final VoidCallback onCreateFile;
-  final VoidCallback onCreateFolder;
+  final void Function(String?) onCreateFile;
+  final void Function(String?) onCreateFolder;
   final MethodChannel termuxChannel;
   final SshSession? sshSession;
   final bool isRemoteProject;
@@ -42,12 +42,14 @@ class FileExplorerDrawer extends StatefulWidget {
 class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
   late PathNavigator _pathNavigator;
   String? _currentPath;
+  String? _selectedPath;
 
   @override
   void initState() {
     super.initState();
     _pathNavigator = PathNavigator();
     _currentPath = widget.projectPath;
+    _selectedPath = widget.projectPath;
     if (_currentPath != null) {
       _pathNavigator.push(_currentPath!);
     }
@@ -58,9 +60,23 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
       setState(() {
         _pathNavigator.push(path);
         _currentPath = path;
+        _selectedPath = path;
       });
       widget.onNavigateFolder(path);
     }
+  }
+
+  void _selectFolder(String path) {
+    if (path == _selectedPath) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() {
+        _selectedPath = path;
+        _currentPath = path;
+        _pathNavigator.push(path);
+      });
+      widget.onNavigateFolder(path);
+    });
   }
 
   @override
@@ -71,6 +87,7 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
       if (_currentPath != widget.projectPath) {
         _pathNavigator.push(widget.projectPath!);
         _currentPath = widget.projectPath;
+        _selectedPath = widget.projectPath;
       }
     }
   }
@@ -80,7 +97,9 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
     if (prevPath != null) {
       setState(() {
         _currentPath = prevPath;
+        _selectedPath = prevPath;
       });
+      widget.onNavigateFolder(prevPath);
     }
   }
 
@@ -89,7 +108,9 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
     if (nextPath != null) {
       setState(() {
         _currentPath = nextPath;
+        _selectedPath = nextPath;
       });
+      widget.onNavigateFolder(nextPath);
     }
   }
 
@@ -191,7 +212,7 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
                   children: [
                     if (widget.projectPath != null) ...[
                       IconButton(
-                        onPressed: widget.onCreateFile,
+                        onPressed: () => widget.onCreateFile(_selectedPath),
                         icon: Icon(
                           Icons.note_add_outlined,
                           color: theme.textMuted,
@@ -203,7 +224,7 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
                       ),
                       const SizedBox(width: 8),
                       IconButton(
-                        onPressed: widget.onCreateFolder,
+                        onPressed: () => widget.onCreateFolder(_selectedPath),
                         icon: Icon(
                           Icons.create_new_folder_outlined,
                           color: theme.textMuted,
@@ -505,20 +526,39 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
     if (isDir) {
       if (name.startsWith('.')) return const SizedBox();
 
+      final isSelected = path == _selectedPath;
       return Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
           key: PageStorageKey(path),
           tilePadding: const EdgeInsets.symmetric(horizontal: 16),
           leading: Icon(Icons.folder_rounded, color: theme.accent, size: 18),
-          title: Text(
-            name,
-            style: TextStyle(
-              color: theme.textPri,
-              fontSize: 13,
-              fontFamily: 'sans-serif',
+          title: InkWell(
+            onTap: () => _selectFolder(path),
+            borderRadius: BorderRadius.circular(4),
+            child: Container(
+              decoration: isSelected
+                  ? BoxDecoration(
+                      color: theme.accent.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(4),
+                    )
+                  : null,
+              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+              child: Text(
+                name,
+                style: TextStyle(
+                  color: theme.textPri,
+                  fontSize: 13,
+                  fontFamily: 'sans-serif',
+                ),
+              ),
             ),
           ),
+          onExpansionChanged: (expanded) {
+            if (expanded) {
+              _selectFolder(path);
+            }
+          },
           iconColor: theme.accent,
           collapsedIconColor: theme.textMuted,
           childrenPadding: const EdgeInsets.only(left: 12),

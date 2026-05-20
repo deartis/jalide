@@ -165,8 +165,12 @@ class SshSession {
 
   // ─── SFTP ────────────────────────────────────────────────────────────────
 
+  Future<SftpClient>? _sftpFuture;
+
   Future<SftpClient> _getSftp() async {
-    _sftp ??= await _client!.sftp();
+    if (_sftp != null) return _sftp!;
+    _sftpFuture ??= _client!.sftp();
+    _sftp = await _sftpFuture;
     return _sftp!;
   }
 
@@ -207,7 +211,9 @@ class SshSession {
     final sftp = await _getSftp();
     final file = await sftp.open(
       path,
-      mode: SftpFileOpenMode.write | SftpFileOpenMode.truncate,
+      mode: SftpFileOpenMode.create |
+          SftpFileOpenMode.write |
+          SftpFileOpenMode.truncate,
     );
     await file.writeBytes(Uint8List.fromList(utf8.encode(content)));
     await file.close();
@@ -236,6 +242,7 @@ class SshSession {
     _client?.close();
     state = SshConnectionState.disconnected;
     _sftp = null;
+    _sftpFuture = null;
     _shellSession = null;
     _client = null;
     _outputController = null;
