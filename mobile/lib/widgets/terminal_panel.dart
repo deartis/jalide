@@ -20,6 +20,7 @@ enum TerminalMode { local, ssh }
 class TerminalPanel extends StatefulWidget {
   final VoidCallback onClose;
   final TerminalMode mode;
+
   /// Sessão SSH ativa — obrigatório quando mode == TerminalMode.ssh
   final SshSession? sshSession;
   final void Function(TerminalPanelState?)? onTerminalStateChanged;
@@ -83,9 +84,13 @@ class TerminalPanelState extends State<TerminalPanel> {
           if (workingDir.startsWith('content://')) {
             workingDir = _resolveSafPath(workingDir);
           }
-          _localPty?.write(utf8.encode('cd "${workingDir.replaceAll('"', '\\"')}"\n'));
+          _localPty?.write(
+            utf8.encode('cd "${workingDir.replaceAll('"', '\\"')}"\n'),
+          );
         } else if (widget.mode == TerminalMode.ssh) {
-          widget.sshSession?.writeToShell('cd "${updatedPath.replaceAll('"', '\\"')}"\n');
+          widget.sshSession?.writeToShell(
+            'cd "${updatedPath.replaceAll('"', '\\"')}"\n',
+          );
         }
       }
     }
@@ -152,7 +157,9 @@ class TerminalPanelState extends State<TerminalPanel> {
   Future<void> _initSshShell() async {
     final session = widget.sshSession;
     if (session == null || !session.isConnected) {
-      throw Exception('Sessão SSH não está conectada.');
+      throw Exception(
+        session?.errorMessage ?? 'Sessão SSH não está conectada. Verifique as credenciais e tente novamente.',
+      );
     }
 
     // Abre o shell remoto com o tamanho inicial do terminal
@@ -189,47 +196,150 @@ class TerminalPanelState extends State<TerminalPanel> {
     }
   }
 
+  Widget _buildStepRow(String step, String text, JalideThemeVariant theme) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 20,
+            height: 20,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: theme.accent.withValues(alpha: 0.15),
+              shape: BoxShape.circle,
+            ),
+            child: Text(
+              step,
+              style: TextStyle(
+                color: theme.accent,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(color: theme.textPri, fontSize: 13, height: 1.4),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _activateTermuxMagic() async {
-    const setupScript = "pkg install -y openssh nodejs && sshd";
-    
+    // O Super Script: Atualiza, instala pacotes, libera storage,
+    // permite external apps, inicia o SSH, pede a senha e mostra o usuário.
+    const setupScript =
+        "pkg update -y && pkg install -y openssh nodejs git && termux-setup-storage && echo 'allow-external-apps = true' >> ~/.termux/termux.properties && sshd && echo '\\n\\e[1;32m[JALIDE] Digite uma senha para o SSH:\\e[0m' && passwd && echo '\\n\\e[1;34m[JALIDE] Seu usuario SSH e:\\e[0m' && whoami";
+
     try {
       final channel = MethodChannel('com.jalide/termux');
-      await channel.invokeMethod('runTermuxCommand', {
-        'script': setupScript,
-      });
-      
+      await channel.invokeMethod('runTermuxCommand', {'script': setupScript});
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('⚡ Comando enviado! Verifique o Termux.'),
-          backgroundColor: Color(0xFF4CAF50),
+        SnackBar(
+          content: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.check_circle_outline, color: Colors.white, size: 18),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  '⚡ Comando enviado! Verifique o Termux.',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                ),
+              ),
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(6),
+                  child: Icon(Icons.close, color: Colors.white, size: 18),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: const Color(0xFF1F8B4C),
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+            side: const BorderSide(color: Colors.white, width: 1),
+          ),
+          duration: const Duration(days: 1),
         ),
       );
     } catch (e) {
       if (!mounted) return;
-      
+
+      final theme = ThemeProvider.of(context).current;
+
       showDialog(
         context: context,
         builder: (ctx) => AlertDialog(
-          backgroundColor: const Color(0xFF1E1E2E),
-          title: const Text('Ativar Node.js (Modo Manual)', style: TextStyle(color: Colors.white, fontSize: 16)),
+          backgroundColor: theme.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              const Icon(Icons.auto_awesome, color: Colors.amber),
+              const SizedBox(width: 8),
+              Text(
+                'Setup Mágico',
+                style: TextStyle(
+                  color: theme.textPri,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'O Android bloqueou o comando automático. Cole o comando abaixo no Termux para ativar o Node.js:',
-                style: TextStyle(color: Color(0xFFCDD6F4), fontSize: 13),
+              Text(
+                'Siga os passos abaixo para preparar o Termux e liberar o poder do JALIDE:',
+                style: TextStyle(color: theme.textMuted, fontSize: 13),
               ),
-              const SizedBox(height: 15),
+              const SizedBox(height: 16),
+              _buildStepRow('1', 'Copie o código abaixo.', theme),
+              _buildStepRow('2', 'Abra o app Termux e cole o código.', theme),
+              _buildStepRow(
+                '3',
+                'Quando solicitado, digite uma nova senha.',
+                theme,
+              ),
+              _buildStepRow(
+                '4',
+                'Anote o usuário que aparecerá no final.',
+                theme,
+              ),
+              const SizedBox(height: 8),
               Container(
+                width: double.infinity,
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.3),
+                  color: Colors.black.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: theme.border),
                 ),
-                child: const Text(
+                child: Text(
                   setupScript,
-                  style: TextStyle(color: Colors.amber, fontFamily: 'monospace', fontSize: 12),
+                  style: const TextStyle(
+                    color: Colors.amber,
+                    fontFamily: 'monospace',
+                    fontSize: 11,
+                  ),
                 ),
               ),
             ],
@@ -237,7 +347,7 @@ class TerminalPanelState extends State<TerminalPanel> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('CANCELAR', style: TextStyle(color: Color(0xFFCDD6F4))),
+              child: Text('FECHAR', style: TextStyle(color: theme.textMuted)),
             ),
             ElevatedButton(
               onPressed: () async {
@@ -245,12 +355,58 @@ class TerminalPanelState extends State<TerminalPanel> {
                 if (ctx.mounted) Navigator.pop(ctx);
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Copiado! Cole no Termux.')),
+                    SnackBar(
+                      content: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.content_copy, color: theme.accent, size: 18),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              'Copiado! Cole no Termux.',
+                              style: TextStyle(color: theme.textPri),
+                            ),
+                          ),
+                          Container(
+                            decoration: BoxDecoration(
+                              color: theme.accent.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: IconButton(
+                              onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
+                              icon: Icon(Icons.close, color: theme.accent, size: 18),
+                              padding: const EdgeInsets.all(6),
+                              constraints: const BoxConstraints(),
+                              tooltip: 'Fechar',
+                            ),
+                          ),
+                        ],
+                      ),
+                      backgroundColor: theme.surface,
+                      behavior: SnackBarBehavior.floating,
+                      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        side: BorderSide(color: theme.accent, width: 1),
+                      ),
+                      duration: const Duration(days: 1),
+                    ),
                   );
                 }
               },
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
-              child: const Text('COPIAR E ABRIR TERMUX', style: TextStyle(color: Colors.black)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: theme.accent,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text(
+                'COPIAR CÓDIGO',
+                style: TextStyle(
+                  color: Colors.black,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
           ],
         ),
@@ -339,7 +495,12 @@ class TerminalPanelState extends State<TerminalPanel> {
               color: _ready ? const Color(0xFF9ECE6A) : Colors.orange,
               shape: BoxShape.circle,
               boxShadow: _ready
-                  ? [BoxShadow(color: const Color(0xFF9ECE6A).withValues(alpha: 0.5), blurRadius: 4)]
+                  ? [
+                      BoxShadow(
+                        color: const Color(0xFF9ECE6A).withValues(alpha: 0.5),
+                        blurRadius: 4,
+                      ),
+                    ]
                   : null,
             ),
           ),
@@ -364,10 +525,14 @@ class TerminalPanelState extends State<TerminalPanel> {
             ),
           ),
           // Limpar terminal
-            GestureDetector(
-              onTap: () => _terminal.buffer.clear(),
-              child: Icon(Icons.cleaning_services_outlined, size: 13, color: theme.textMuted),
+          GestureDetector(
+            onTap: () => _terminal.buffer.clear(),
+            child: Icon(
+              Icons.cleaning_services_outlined,
+              size: 13,
+              color: theme.textMuted,
             ),
+          ),
           const SizedBox(width: 10),
           if (!isSSH)
             GestureDetector(
@@ -392,7 +557,11 @@ class TerminalPanelState extends State<TerminalPanel> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.error_outline, color: Colors.redAccent, size: 32),
+              const Icon(
+                Icons.error_outline,
+                color: Colors.redAccent,
+                size: 32,
+              ),
               const SizedBox(height: 8),
               Text(
                 _errorMessage!,
@@ -475,7 +644,7 @@ class TerminalPanelState extends State<TerminalPanel> {
     try {
       final uri = Uri.parse(safUri);
       final decodedPath = Uri.decodeComponent(uri.path);
-      
+
       // Encontra a parte depois de tree/ ou document/
       String? treeOrDocPart;
       final treeIndex = decodedPath.indexOf('tree/');
@@ -487,7 +656,7 @@ class TerminalPanelState extends State<TerminalPanel> {
           treeOrDocPart = decodedPath.substring(docIndex + 9);
         }
       }
-      
+
       if (treeOrDocPart != null) {
         if (treeOrDocPart.startsWith('primary:')) {
           final relativePath = treeOrDocPart.substring(8);

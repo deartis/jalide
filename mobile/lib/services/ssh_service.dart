@@ -225,6 +225,16 @@ class SshSession {
     await sftp.mkdir(path);
   }
 
+  String _escapeShellArg(String value) {
+    return "'${value.replaceAll("'", "'\"'\"'")}'";
+  }
+
+  /// Exclui arquivo ou pasta remota
+  Future<void> deletePath(String path, {required bool isDir}) async {
+    final command = isDir ? 'rm -rf' : 'rm -f';
+    await _client!.run('$command ${_escapeShellArg(path)}');
+  }
+
   /// Retorna o diretório home do usuário remoto
   Future<String> getHomeDir() async {
     final sftp = await _getSftp();

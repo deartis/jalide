@@ -65,11 +65,43 @@ class _DonationScreenState extends State<DonationScreen>
 
   void _copyPix() {
     Clipboard.setData(ClipboardData(text: pixKey));
+    final theme = ThemeProvider.of(context).current;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: const Text('Chave PIX copiada com sucesso! ❤️'),
-        backgroundColor: ThemeProvider.of(context).current.accent,
+        content: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.check_circle_outline, color: Colors.black, size: 18),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Chave PIX copiada com sucesso! ❤️',
+                style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w600),
+              ),
+            ),
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: IconButton(
+                onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
+                icon: const Icon(Icons.close, color: Colors.black, size: 18),
+                padding: const EdgeInsets.all(6),
+                constraints: const BoxConstraints(),
+                tooltip: 'Fechar',
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: theme.accent,
         behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: BorderSide(color: theme.surface, width: 1),
+        ),
+        duration: const Duration(days: 1),
       ),
     );
   }

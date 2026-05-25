@@ -39,6 +39,22 @@ class EditorScreen extends StatefulWidget {
   State<EditorScreen> createState() => _EditorScreenState();
 }
 
+enum _ToastType { info, success, error }
+
+class _SnackBarStyle {
+  final Color backgroundColor;
+  final Color iconColor;
+  final Color textColor;
+  final IconData icon;
+
+  const _SnackBarStyle({
+    required this.backgroundColor,
+    required this.iconColor,
+    required this.textColor,
+    required this.icon,
+  });
+}
+
 class _EditorScreenState extends State<EditorScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   // Tabs abertas
@@ -272,14 +288,14 @@ class _EditorScreenState extends State<EditorScreen> {
           });
         }
       } catch (e) {
-        _showToast('Erro ao listar pasta SAF: $e');
+        _showToast('Erro ao listar pasta SAF: $e', type: _ToastType.error);
       }
       return;
     }
 
     final dir = Directory(path);
     if (!dir.existsSync()) {
-      _showToast('Erro: Pasta não encontrada em $path');
+      _showToast('Erro: Pasta não encontrada em $path', type: _ToastType.error);
       return;
     }
 
@@ -309,7 +325,7 @@ class _EditorScreenState extends State<EditorScreen> {
         });
       }
     } catch (e) {
-      _showToast('Erro ao listar arquivos: $e');
+      _showToast('Erro ao listar arquivos: $e', type: _ToastType.error);
       debugPrint('JALIDE_ERROR: $e');
     }
   }
@@ -337,7 +353,7 @@ class _EditorScreenState extends State<EditorScreen> {
         });
       }
     } catch (e) {
-      _showToast('Erro ao listar arquivos remotos: $e');
+      _showToast('Erro ao listar arquivos remotos: $e', type: _ToastType.error);
     }
   }
 
@@ -669,7 +685,7 @@ class _EditorScreenState extends State<EditorScreen> {
         _scaffoldKey.currentState?.closeDrawer();
       }
     } catch (e) {
-      _showToast('Erro ao abrir arquivo: $e');
+      _showToast('Erro ao abrir arquivo: $e', type: _ToastType.error);
     }
   }
 
@@ -752,9 +768,9 @@ class _EditorScreenState extends State<EditorScreen> {
         _openTabs[_activeTabIndex]['initialContent'] = _activeController.text;
       });
       if (!mounted) return;
-      _showToast('Salvo com sucesso');
+      _showToast('Salvo com sucesso', type: _ToastType.success);
     } catch (e) {
-      _showToast('Erro ao salvar: $e');
+      _showToast('Erro ao salvar: $e', type: _ToastType.error);
       debugPrint('JALIDE_SAVE_ERROR: $e');
     } finally {
       if (mounted) {
@@ -839,9 +855,9 @@ class _EditorScreenState extends State<EditorScreen> {
       _saveTabsPreference();
       // Atualiza o explorer se o arquivo foi salvo na pasta do projeto
       if (_projectPath != null) await _loadProjectFiles(_projectPath!);
-      _showToast('Salvo como ${p.basename(finalPath)}');
+      _showToast('Salvo como ${p.basename(finalPath)}', type: _ToastType.success);
     } catch (e) {
-      _showToast('Erro ao salvar como: $e');
+      _showToast('Erro ao salvar como: $e', type: _ToastType.error);
       debugPrint('JALIDE_SAVE_AS_ERROR: $e');
     }
   }
@@ -1191,23 +1207,158 @@ class _EditorScreenState extends State<EditorScreen> {
     _activeFocusNode.requestFocus();
   }
 
-  void _showToast(String msg) {
+  void _showToast(
+    String msg, {
+    _ToastType type = _ToastType.info,
+  }) {
     if (!mounted) return;
+
+    final snackBarTheme = switch (type) {
+      _ToastType.success => _SnackBarStyle(
+        backgroundColor: const Color(0xFF1F8B4C),
+        iconColor: Colors.white,
+        textColor: Colors.white,
+        icon: Icons.check_circle_outline,
+      ),
+      _ToastType.error => _SnackBarStyle(
+        backgroundColor: const Color(0xFFF7768E).withValues(alpha: 0.95),
+        iconColor: Colors.white,
+        textColor: Colors.white,
+        icon: Icons.error_outline,
+      ),
+      _ToastType.info => _SnackBarStyle(
+        backgroundColor: _theme.surface,
+        iconColor: _theme.accent,
+        textColor: _theme.textPri,
+        icon: Icons.info_outline,
+      ),
+    };
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
-          msg,
-          style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+        content: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(snackBarTheme.icon, color: snackBarTheme.iconColor, size: 18),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                msg,
+                style: TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 13,
+                  color: snackBarTheme.textColor,
+                ),
+              ),
+            ),
+            Container(
+              decoration: BoxDecoration(
+                color: snackBarTheme.iconColor.withValues(alpha: 0.18),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: IconButton(
+                onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
+                icon: Icon(Icons.close, color: snackBarTheme.iconColor, size: 18),
+                padding: const EdgeInsets.all(6),
+                constraints: const BoxConstraints(),
+                tooltip: 'Fechar',
+              ),
+            ),
+          ],
         ),
-        backgroundColor: _theme.surface,
+        backgroundColor: snackBarTheme.backgroundColor,
         behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-          side: BorderSide(color: _theme.accent, width: 1),
+          borderRadius: BorderRadius.circular(10),
+          side: BorderSide(
+            color: type == _ToastType.info ? _theme.accent : snackBarTheme.iconColor,
+            width: 1,
+          ),
         ),
-        duration: const Duration(seconds: 2),
+        duration: const Duration(days: 1),
       ),
     );
+  }
+
+  Future<void> _deleteItem(
+    String path,
+    bool isDir,
+    bool isRemote,
+    bool isSaf,
+  ) async {
+    if (isSaf) {
+      _showToast('Exclusão via SAF ainda não está disponível');
+      return;
+    }
+
+    final affectedCurrentFile = _activePath != null &&
+        (_activePath == path ||
+            (isDir && _activePath!.startsWith('$path/')));
+
+    if (affectedCurrentFile && _activeHasUnsavedChanges) {
+      _showToast('Salve ou feche a aba antes de excluir este item');
+      return;
+    }
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: _theme.surface,
+        title: Text(
+          'Excluir ${isDir ? 'pasta' : 'arquivo'}',
+          style: TextStyle(color: _theme.textPri),
+        ),
+        content: Text(
+          'Deseja realmente excluir "${p.basename(path)}"?',
+          style: TextStyle(color: _theme.textMuted),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancelar', style: TextStyle(color: _theme.textMuted)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              'Excluir',
+              style: TextStyle(color: Colors.redAccent),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) {
+      return;
+    }
+
+    try {
+      if (isRemote && _activeSshSession != null) {
+        await _activeSshSession!.deletePath(path, isDir: isDir);
+      } else {
+        if (isDir) {
+          await Directory(path).delete(recursive: true);
+        } else {
+          await File(path).delete();
+        }
+      }
+
+      if (affectedCurrentFile && _activeTabIndex != -1) {
+        _closeTab(_activeTabIndex);
+      }
+
+      final refreshPath = isRemote ? p.posix.dirname(path) : p.dirname(path);
+      if (isRemote) {
+        await _loadRemoteProjectFiles(refreshPath);
+      } else {
+        await _loadProjectFiles(refreshPath);
+      }
+
+      _showToast('${isDir ? 'Pasta' : 'Arquivo'} excluído com sucesso', type: _ToastType.success);
+    } catch (e) {
+      _showToast('Erro ao excluir: $e', type: _ToastType.error);
+    }
   }
 
   Future<void> _pickProjectFolder() async {
@@ -1465,7 +1616,7 @@ class _EditorScreenState extends State<EditorScreen> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('last_project_path', symlinkTarget);
       await _loadProjectFiles(symlinkTarget);
-      _showToast('✅ Workspace "$folderName" aberto!');
+      _showToast('✅ Workspace "$folderName" aberto!', type: _ToastType.success);
     } else {
       // Tenta mais uma vez com delay maior
       await Future.delayed(const Duration(seconds: 3));
@@ -1473,7 +1624,7 @@ class _EditorScreenState extends State<EditorScreen> {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('last_project_path', symlinkTarget);
         await _loadProjectFiles(symlinkTarget);
-        _showToast('✅ Workspace "$folderName" aberto!');
+        _showToast('✅ Workspace "$folderName" aberto!', type: _ToastType.success);
       } else {
         _showToast(
           '⚠️ Link não criado. Verifique:\n'
@@ -1539,14 +1690,14 @@ class _EditorScreenState extends State<EditorScreen> {
           await _activeSshSession!.writeFile(path, '');
           await _loadRemoteProjectFiles(_projectPath!);
           _addTab(path, '', isRemote: true);
-          _showToast('Arquivo remoto criado: $name');
+          _showToast('Arquivo remoto criado: $name', type: _ToastType.success);
         } else {
           // Nota: O SFTP do dartssh2 não tem mkdir direto exposto no SshSession
           // Mas podemos usar o shell ou implementar mkdir no SshSession.
           // Vou usar o SshSession e adicionar um método mkdir lá.
           await _activeSshSession!.mkdir(path);
           await _loadRemoteProjectFiles(_projectPath!);
-          _showToast('Pasta remota criada: $name');
+          _showToast('Pasta remota criada: $name', type: _ToastType.success);
         }
         return;
       }
@@ -1561,7 +1712,7 @@ class _EditorScreenState extends State<EditorScreen> {
         await file.create(recursive: true);
         await _loadProjectFiles(_projectPath!);
         _addTab(path, ''); // Abre o novo arquivo
-        _showToast('Arquivo criado: $name');
+        _showToast('Arquivo criado: $name', type: _ToastType.success);
       } else {
         final dir = Directory(path);
         if (await dir.exists()) {
@@ -1572,7 +1723,7 @@ class _EditorScreenState extends State<EditorScreen> {
         await _loadProjectFiles(_projectPath!);
       }
     } catch (e) {
-      _showToast('Erro ao criar: $e');
+      _showToast('Erro ao criar: $e', type: _ToastType.error);
     }
   }
 
@@ -1631,6 +1782,7 @@ class _EditorScreenState extends State<EditorScreen> {
           onOpenTermux: _openTermuxWorkspace,
           onCreateFile: (basePath) => _showCreateDialog(true, basePath),
           onCreateFolder: (basePath) => _showCreateDialog(false, basePath),
+          onDeleteItem: _deleteItem,
           termuxChannel: _termuxChannel,
           sshSession: _activeSshSession,
           isRemoteProject: _isRemoteProject,
@@ -1995,11 +2147,27 @@ class _EditorScreenState extends State<EditorScreen> {
     );
   }
 
+  Future<void> _disconnectSshSession() async {
+    final session = _activeSshSession;
+    if (session == null) return;
+
+    await session.disconnect();
+
+    if (!mounted) return;
+    setState(() {
+      _activeSshSession = null;
+      _terminalMode = TerminalMode.local;
+    });
+    _showToast('SSH desconectado');
+  }
+
   void _openSshScreen() {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => SshConnectScreen(
           profileManager: _sshProfileManager,
+          currentSession: _activeSshSession,
+          onDisconnect: _disconnectSshSession,
           onConnected: (session) async {
             setState(() {
               _activeSshSession = session;

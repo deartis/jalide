@@ -16,6 +16,7 @@ class FileExplorerDrawer extends StatefulWidget {
   final VoidCallback onOpenTermux;
   final void Function(String?) onCreateFile;
   final void Function(String?) onCreateFolder;
+  final void Function(String path, bool isDir, bool isRemote, bool isSaf) onDeleteItem;
   final MethodChannel termuxChannel;
   final SshSession? sshSession;
   final bool isRemoteProject;
@@ -30,6 +31,7 @@ class FileExplorerDrawer extends StatefulWidget {
     required this.onOpenTermux,
     required this.onCreateFile,
     required this.onCreateFolder,
+    required this.onDeleteItem,
     required this.termuxChannel,
     this.sshSession,
     this.isRemoteProject = false,
@@ -77,6 +79,324 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
       });
       widget.onNavigateFolder(path);
     });
+  }
+
+  void _showItemActions({
+    required String path,
+    required bool isDir,
+    required bool isRemote,
+    required bool isSaf,
+    required String label,
+  }) {
+    final theme = ThemeProvider.of(context).current;
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 18),
+        child: Container(
+          decoration: BoxDecoration(
+            color: theme.surface,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: theme.border, width: 1),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.35),
+                blurRadius: 28,
+                offset: const Offset(0, 18),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      theme.accent.withValues(alpha: 0.18),
+                      theme.surface,
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius:
+                      const BorderRadius.vertical(top: Radius.circular(24)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: theme.accent.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Icon(
+                            isDir ? Icons.folder_rounded : Icons.insert_drive_file,
+                            color: theme.accent,
+                            size: 22,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            label,
+                            style: TextStyle(
+                              color: theme.textPri,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      isDir
+                          ? 'Pasta • ações disponíveis'
+                          : 'Arquivo • ações disponíveis',
+                      style: TextStyle(
+                        color: theme.textMuted,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 14, 12, 12),
+                child: Column(
+                  children: [
+                    _buildActionTile(
+                      context,
+                      icon: Icons.delete_outline,
+                      title: 'Excluir',
+                      subtitle: isDir
+                          ? 'Excluir esta pasta e o conteúdo interno'
+                          : 'Excluir este arquivo',
+                      accent: Colors.redAccent,
+                      onTap: () async {
+                        Navigator.pop(ctx);
+                        String typedValue = '';
+                        final confirmed = await showDialog<bool>(
+                          context: context,
+                          barrierDismissible: false,
+                          builder: (confirmCtx) => PopScope(
+                            canPop: false,
+                            child: StatefulBuilder(
+                              builder: (dialogContext, setState) {
+                                final canConfirm = typedValue.trim() == label;
+
+                                return Dialog(
+                                  backgroundColor: Colors.transparent,
+                                  insetPadding: const EdgeInsets.symmetric(horizontal: 20),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(20),
+                                    decoration: BoxDecoration(
+                                      color: theme.surface,
+                                      borderRadius: BorderRadius.circular(24),
+                                      border: Border.all(color: theme.border, width: 1),
+                                    ),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Container(
+                                              padding: const EdgeInsets.all(12),
+                                              decoration: BoxDecoration(
+                                                color: Colors.redAccent.withValues(alpha: 0.12),
+                                                borderRadius: BorderRadius.circular(16),
+                                              ),
+                                              child: const Icon(
+                                                Icons.delete_forever,
+                                                color: Colors.redAccent,
+                                                size: 24,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 14),
+                                            Expanded(
+                                              child: Text(
+                                                'Confirmar exclusão',
+                                                style: TextStyle(
+                                                  color: theme.textPri,
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 18,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 16),
+                                        Text(
+                                          'Esta ação é irreversível. Digite "$label" para confirmar a exclusão de ${isDir ? 'a pasta' : 'o arquivo'}.',
+                                          style: TextStyle(
+                                            color: theme.textMuted,
+                                            fontSize: 14,
+                                            height: 1.4,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 14),
+                                        TextField(
+                                          autofocus: true,
+                                          textInputAction: TextInputAction.done,
+                                          onChanged: (value) {
+                                            typedValue = value;
+                                            setState(() {});
+                                          },
+                                          decoration: InputDecoration(
+                                            hintText: label,
+                                            hintStyle: TextStyle(color: theme.textMuted),
+                                            enabledBorder: OutlineInputBorder(
+                                              borderRadius: BorderRadius.circular(14),
+                                              borderSide: BorderSide(color: theme.border),
+                                            ),
+                                            focusedBorder: OutlineInputBorder(
+                                              borderRadius: BorderRadius.circular(14),
+                                              borderSide: BorderSide(color: Colors.redAccent),
+                                            ),
+                                            contentPadding: const EdgeInsets.symmetric(
+                                              horizontal: 14,
+                                              vertical: 14,
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 18),
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.end,
+                                          children: [
+                                            TextButton(
+                                              onPressed: () => Navigator.pop(confirmCtx, false),
+                                              child: Text(
+                                                'Cancelar',
+                                                style: TextStyle(color: theme.textMuted),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            ElevatedButton.icon(
+                                              onPressed: canConfirm ? () => Navigator.pop(confirmCtx, true) : null,
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: Colors.redAccent,
+                                                foregroundColor: Colors.white,
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius: BorderRadius.circular(12),
+                                                ),
+                                              ),
+                                              icon: const Icon(Icons.delete_outline, size: 18),
+                                              label: const Text('Excluir'),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        );
+                        if (confirmed == true) {
+                          widget.onDeleteItem(path, isDir, isRemote, isSaf);
+                        }
+                      },
+                    ),
+                    const Divider(height: 1, color: Color(0x1FFFFFFF)),
+                    _buildActionTile(
+                      context,
+                      icon: Icons.more_horiz,
+                      title: 'Mais opções',
+                      subtitle: 'Em breve: renomear, mover e copiar',
+                      accent: theme.textMuted,
+                      onTap: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    style: TextButton.styleFrom(
+                      foregroundColor: theme.textMuted,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
+                    ),
+                    child: const Text('Fechar'),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionTile(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color accent,
+    required VoidCallback onTap,
+  }) {
+    final theme = ThemeProvider.of(context).current;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: accent, size: 20),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: theme.textPri,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      color: theme.textMuted,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -535,6 +855,13 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
           leading: Icon(Icons.folder_rounded, color: theme.accent, size: 18),
           title: InkWell(
             onTap: () => _selectFolder(path),
+            onLongPress: () => _showItemActions(
+              path: path,
+              isDir: true,
+              isRemote: isRemote,
+              isSaf: isSaf,
+              label: name,
+            ),
             borderRadius: BorderRadius.circular(4),
             child: Container(
               decoration: isSelected
@@ -659,6 +986,13 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
         ),
       ),
       onTap: () => widget.onFileTap(path),
+      onLongPress: () => _showItemActions(
+        path: path,
+        isDir: false,
+        isRemote: isRemote,
+        isSaf: isSaf,
+        label: name,
+      ),
     );
   }
 }

@@ -9,11 +9,15 @@ import '../theme/jalide_theme.dart';
 class SshConnectScreen extends StatefulWidget {
   final SshProfileManager profileManager;
   final Future<void> Function(SshSession session) onConnected;
+  final SshSession? currentSession;
+  final Future<void> Function()? onDisconnect;
 
   const SshConnectScreen({
     super.key,
     required this.profileManager,
     required this.onConnected,
+    this.currentSession,
+    this.onDisconnect,
   });
 
   @override
@@ -23,6 +27,7 @@ class SshConnectScreen extends StatefulWidget {
 class _SshConnectScreenState extends State<SshConnectScreen> {
   SshSession? _connectingSession;
   String? _connectingId;
+  String? _testingId;
 
   JalideThemeVariant get _theme => ThemeProvider.of(context).current;
 
@@ -50,12 +55,109 @@ class _SshConnectScreenState extends State<SshConnectScreen> {
   void _showError(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(msg, style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
-        backgroundColor: const Color(0xFFF7768E).withValues(alpha: 0.9),
+        content: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.error_outline, color: Colors.white, size: 18),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                msg,
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 12,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.18),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: IconButton(
+                onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
+                icon: const Icon(Icons.close, color: Colors.white, size: 18),
+                padding: const EdgeInsets.all(6),
+                constraints: const BoxConstraints(),
+                tooltip: 'Fechar',
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: const Color(0xFFF7768E).withValues(alpha: 0.95),
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: const BorderSide(color: Colors.white, width: 1),
+        ),
+        duration: const Duration(days: 1),
       ),
     );
+  }
+
+  void _showSuccess(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.check_circle_outline, color: Colors.white, size: 18),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                msg,
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 12,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.18),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: IconButton(
+                onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
+                icon: const Icon(Icons.close, color: Colors.white, size: 18),
+                padding: const EdgeInsets.all(6),
+                constraints: const BoxConstraints(),
+                tooltip: 'Fechar',
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: const Color(0xFF1F8B4C).withValues(alpha: 0.95),
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: const BorderSide(color: Colors.white, width: 1),
+        ),
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  Future<void> _testConnection(SshProfile profile) async {
+    setState(() => _testingId = profile.id);
+
+    final testSession = SshSession(profile: profile);
+
+    try {
+      await testSession.connect();
+      await testSession.disconnect();
+      if (!mounted) return;
+      setState(() => _testingId = null);
+      _showSuccess('Conexão OK com ${profile.label}');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _testingId = null);
+      _showError('Falha ao testar conexão: $e');
+    }
   }
 
   Future<void> _showAddProfileDialog({SshProfile? existing}) async {
@@ -309,26 +411,37 @@ class _SshConnectScreenState extends State<SshConnectScreen> {
 
   Widget _buildProfileCard(SshProfile profile) {
     final isConnecting = _connectingId == profile.id;
+    final isTesting = _testingId == profile.id;
+    final isOnline = widget.currentSession?.profile.id == profile.id &&
+        widget.currentSession!.isConnected;
 
     return Container(
       decoration: BoxDecoration(
         color: _theme.surface,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isConnecting
-              ? const Color(0xFF7AA2F7)
-              : _theme.border,
-          width: isConnecting ? 1.5 : 1,
+          color: isOnline
+              ? const Color(0xFF1F8B4C)
+              : isConnecting
+                  ? const Color(0xFF7AA2F7)
+                  : _theme.border,
+          width: isOnline || isConnecting ? 1.5 : 1,
         ),
-        boxShadow: isConnecting
-            ? [BoxShadow(color: const Color(0xFF7AA2F7).withValues(alpha: 0.15), blurRadius: 8)]
+        boxShadow: isOnline || isConnecting
+            ? [
+                BoxShadow(
+                  color: (isOnline ? const Color(0xFF1F8B4C) : const Color(0xFF7AA2F7))
+                      .withValues(alpha: 0.15),
+                  blurRadius: 8,
+                ),
+              ]
             : null,
       ),
       child: Material(
         color: Colors.transparent,
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
-          onTap: isConnecting ? null : () => _connect(profile),
+          onTap: isConnecting || isOnline ? null : () => _connect(profile),
           borderRadius: BorderRadius.circular(12),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -375,8 +488,10 @@ class _SshConnectScreenState extends State<SshConnectScreen> {
                           fontSize: 11,
                         ),
                       ),
-                      const SizedBox(height: 4),
-                      Row(
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
                         children: [
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -394,6 +509,35 @@ class _SshConnectScreenState extends State<SshConnectScreen> {
                               ),
                             ),
                           ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: (isOnline
+                                      ? const Color(0xFF1F8B4C)
+                                      : isTesting
+                                          ? const Color(0xFFF6C177)
+                                          : _theme.textMuted)
+                                  .withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              isOnline
+                                  ? 'ONLINE'
+                                  : isTesting
+                                      ? 'TESTANDO...'
+                                      : 'OFFLINE',
+                              style: TextStyle(
+                                color: isOnline
+                                    ? const Color(0xFF1F8B4C)
+                                    : isTesting
+                                        ? const Color(0xFFF6C177)
+                                        : _theme.textMuted,
+                                fontSize: 9,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                     ],
@@ -401,20 +545,65 @@ class _SshConnectScreenState extends State<SshConnectScreen> {
                 ),
                 // Ações
                 if (!isConnecting) ...[
-                  IconButton(
-                    onPressed: () => _showAddProfileDialog(existing: profile),
-                    icon: Icon(Icons.edit_outlined, size: 16, color: _theme.textMuted),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                  ),
-                  IconButton(
-                    onPressed: () async {
-                      await widget.profileManager.delete(profile.id);
-                      setState(() {});
-                    },
-                    icon: const Icon(Icons.delete_outline, size: 16, color: Color(0xFFF7768E)),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      if (isOnline)
+                        TextButton.icon(
+                          onPressed: widget.onDisconnect,
+                          icon: const Icon(Icons.power_settings_new_outlined, size: 16),
+                          label: const Text('Desconectar', style: TextStyle(fontSize: 11)),
+                          style: TextButton.styleFrom(
+                            foregroundColor: const Color(0xFFF7768E),
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                        )
+                      else
+                        TextButton.icon(
+                          onPressed: isTesting ? null : () => _testConnection(profile),
+                          icon: isTesting
+                              ? const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF7AA2F7)),
+                                )
+                              : const Icon(Icons.wifi_find_outlined, size: 16),
+                          label: Text(
+                            isTesting ? 'Testando...' : 'Testar conexão',
+                            style: const TextStyle(fontSize: 11),
+                          ),
+                          style: TextButton.styleFrom(
+                            foregroundColor: const Color(0xFF7AA2F7),
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                        ),
+                      const SizedBox(height: 4),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            onPressed: () => _showAddProfileDialog(existing: profile),
+                            icon: Icon(Icons.edit_outlined, size: 16, color: _theme.textMuted),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                          ),
+                          IconButton(
+                            onPressed: () async {
+                              await widget.profileManager.delete(profile.id);
+                              setState(() {});
+                            },
+                            icon: const Icon(Icons.delete_outline, size: 16, color: Color(0xFFF7768E)),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ],
               ],
