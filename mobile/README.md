@@ -26,17 +26,31 @@ JALIDE é uma IDE móvel moderna e poderosa desenvolvida em Flutter, com suporte
 | | Funcionalidade | Descrição |
 |---|---|---|
 | 📝 | **Editor profissional** | Syntax highlighting, zoom dinâmico e múltiplas abas |
+| 🤖 | **Autocomplete por linguagem** | Sugestões inteligentes como VSCode (JS, Python, Dart, C++, etc.) — muda conforme você abre arquivos |
 | ▶️ | **Play Inteligente** | Botão de execução direta na barra superior que roda códigos com um toque (Node, Python, Dart, C/C++, Bash) |
 | 💾 | **Auto-Save Background** | Salvamento automático silencioso (com debounce de 1.5s) e ao trocar de abas no editor |
 | 🐚 | **Terminal híbrido** | Alterne entre terminal local (Android) e remoto via SSH |
 | ⚡ | **Termux Magic** | Configura Node.js + SSH no Termux com um clique |
 | 📂 | **SFTP nativo** | Edite arquivos remotos como se fossem locais |
-| 🔐 | **Gestor de perfis SSH** | Credenciais seguras para acesso rápido a servidores |
+| 🔐 | **Gestor de perfis SSH (melhorado)** | Credenciais seguras, testar conexão, indicador de status (ONLINE/OFFLINE), desconectar com um clique |
 | 🎹 | **Teclado auxiliar** | Atalhos `{}` `[]` `=>` otimizados para telas pequenas |
 
 ---
 
-## 🛠️ Integração: JALIDE + Termux
+## 🎯 O que há de novo (v2.0+)
+
+### 🤖 Autocomplete Inteligente
+- **Sugestões por linguagem** — Quando você abre um arquivo JavaScript, o editor sugere `console`, `fetch`, `async`. Para Python, `print`, `import`, `json`. Automaticamente!
+- **Como funciona:** Abra um arquivo `.js`, `.py`, `.dart`, `.cpp` ou qualquer um dos 8+ idiomas suportados — as sugestões mudam na hora.
+- **Digite e veja:** Conforme você digita, sugestões relevantes aparecem (como no VSCode).
+
+### 🔐 SSH Melhorado
+- **Testar conexão** — Botão para verificar se o servidor está respondendo antes de trabalhar.
+- **Status em tempo real** — Indicador `🟢 ONLINE` ou `🔴 OFFLINE` próximo a cada perfil salvo.
+- **Desconectar com 1 clique** — Encerra a sessão SSH quando terminar (libera recursos).
+- **Memory-safe** — Sem memory leaks ao deletar perfis ou desconectar.
+
+---
 
 Para usar o potencial máximo (Node.js, NPM, Git), integre o JALIDE ao **[Termux](https://termux.dev)**.
 

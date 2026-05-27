@@ -24,6 +24,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/file_service.dart';
 //import '../services/ssh_service.dart';
 import '../theme/jalide_theme.dart';
+import '../utils/code_completion.dart';
 import '../widgets/aux_keyboard.dart';
 import '../widgets/terminal_panel.dart';
 import '../widgets/status_bar.dart';
@@ -386,10 +387,27 @@ class _EditorScreenState extends State<EditorScreen> {
         r'\bHACK\b': const TextStyle(color: Color(0xFFFFD580)),
       },
     );
+    // Aplica sugestões padrão baseadas na linguagem
+    final langName = _getLanguageDisplayName(language);
+    applyLanguageSuggestions(controller, langName);
+    
     controller.addListener(() {
       if (mounted) onChanged();
     });
     return controller;
+  }
+
+  String _getLanguageDisplayName(dynamic language) {
+    if (language == null) return 'JS';
+    if (language == javascript) return 'JS';
+    if (language == json) return 'JSON';
+    if (language == python) return 'Python';
+    if (language == xml) return 'HTML';
+    if (language == css) return 'CSS';
+    if (language == dart) return 'Dart';
+    if (language == cpp) return 'C++';
+    if (language == markdown) return 'Markdown';
+    return 'JS';
   }
 
   void _createNewTab() {
@@ -522,6 +540,7 @@ class _EditorScreenState extends State<EditorScreen> {
                         setState(() {
                           _openTabs[_activeTabIndex]['languageName'] = lang['displayName'];
                           _activeController.language = lang['highlight'] as Mode?;
+                          applyLanguageSuggestions(_activeController, lang['displayName'] as String);
                         });
                         Navigator.pop(ctx);
                       },
