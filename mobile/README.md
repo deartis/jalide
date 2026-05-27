@@ -37,7 +37,7 @@ JALIDE é uma IDE móvel moderna e poderosa desenvolvida em Flutter, com suporte
 
 ---
 
-## 🎯 O que há de novo (v2.0+)
+## 🎯 O que há de novo (v0.1.0+4)
 
 ### 🤖 Autocomplete Inteligente
 - **Sugestões por linguagem** — Quando você abre um arquivo JavaScript, o editor sugere `console`, `fetch`, `async`. Para Python, `print`, `import`, `json`. Automaticamente!
