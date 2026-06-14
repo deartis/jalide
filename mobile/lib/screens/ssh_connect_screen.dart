@@ -594,8 +594,28 @@ class _SshConnectScreenState extends State<SshConnectScreen> {
                           ),
                           IconButton(
                             onPressed: () async {
-                              await widget.profileManager.delete(profile.id);
-                              setState(() {});
+                              final confirm = await showDialog<bool>(
+                                context: context,
+                                builder: (ctx) => AlertDialog(
+                                  backgroundColor: _theme.surface,
+                                  title: Text('Excluir Conexão', style: TextStyle(color: _theme.textPri)),
+                                  content: Text('Tem certeza que deseja excluir a conexão "${profile.label}"?', style: TextStyle(color: _theme.textMuted)),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(ctx, false),
+                                      child: Text('Cancelar', style: TextStyle(color: _theme.textMuted)),
+                                    ),
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(ctx, true),
+                                      child: const Text('Excluir', style: TextStyle(color: Colors.redAccent)),
+                                    ),
+                                  ],
+                                ),
+                              );
+                              if (confirm == true) {
+                                await widget.profileManager.delete(profile.id);
+                                if (mounted) setState(() {});
+                              }
                             },
                             icon: const Icon(Icons.delete_outline, size: 16, color: Color(0xFFF7768E)),
                             padding: EdgeInsets.zero,

@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import '../models/editor_tab.dart';
 import '../theme/jalide_theme.dart';
 
 class EditorTabsBar extends StatelessWidget {
-  final List<Map<String, dynamic>> tabs;
+  final List<EditorTab> tabs;
   final int activeIndex;
   final Function(int) onTabTap;
   final Function(int) onCloseTab;
@@ -57,7 +58,7 @@ class EditorTabsBar extends StatelessWidget {
                       ),
                     ),
                   Text(
-                    tab['name'] as String,
+                    tab.name,
                     style: TextStyle(
                       color: isActive ? theme.textPri : theme.textMuted,
                       fontFamily: 'monospace',

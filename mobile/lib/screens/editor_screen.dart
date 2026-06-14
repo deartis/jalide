@@ -14,8 +14,9 @@ import 'package:highlight/languages/css.dart';
 import 'package:highlight/languages/dart.dart';
 import 'package:highlight/languages/cpp.dart';
 import 'package:highlight/languages/markdown.dart';
+import 'package:jalide/models/editor_tab.dart';
 import 'package:jalide/services/ssh_service.dart';
-import 'package:jalide/screens/donation_screen.dart';
+import 'package:jalide/screens/about_screen.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -66,24 +67,21 @@ class _SnackBarStyle {
 class _EditorScreenState extends State<EditorScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   // Tabs abertas
-  final List<Map<String, dynamic>> _openTabs = [];
+  final List<EditorTab> _openTabs = [];
   int _activeTabIndex = -1;
 
-  // Getters para a aba ativa com proteção para estado inicial
-  CodeController get _activeController => _activeTabIndex != -1
-      ? _openTabs[_activeTabIndex]['controller'] as CodeController
-      : throw StateError('Nenhuma aba ativa');
+  // Getters para a aba ativa (nullable — chamadores devem verificar _activeTabIndex)
+  CodeController? get _activeController =>
+      _activeTabIndex != -1 ? _openTabs[_activeTabIndex].controller : null;
 
-  FocusNode get _activeFocusNode => _activeTabIndex != -1
-      ? _openTabs[_activeTabIndex]['focusNode'] as FocusNode
-      : throw StateError('Nenhuma aba ativa');
+  FocusNode? get _activeFocusNode =>
+      _activeTabIndex != -1 ? _openTabs[_activeTabIndex].focusNode : null;
 
-  String? get _activePath => _activeTabIndex != -1
-      ? _openTabs[_activeTabIndex]['path'] as String?
-      : null;
+  String? get _activePath =>
+      _activeTabIndex != -1 ? _openTabs[_activeTabIndex].path : null;
 
   bool get _activeHasUnsavedChanges => _activeTabIndex != -1
-      ? _openTabs[_activeTabIndex]['hasUnsavedChanges'] as bool
+      ? _openTabs[_activeTabIndex].hasUnsavedChanges
       : false;
 
   JalideThemeVariant get _theme => ThemeProvider.of(context).current;
@@ -95,7 +93,7 @@ class _EditorScreenState extends State<EditorScreen> {
   TerminalPanelState? _activeTerminalState;
   DateTime? _lastEditorTouchDown;
   bool _isRemoteProject = false;
-  bool _isSaving = false;
+  Future<void>? _currentSave;
   final SshProfileManager _sshProfileManager = SshProfileManager();
   late SshConnectionManager _sshConnectionManager;
 
@@ -172,8 +170,8 @@ class _EditorScreenState extends State<EditorScreen> {
     _sshConnectionManager.dispose();
     _autoSaveTimer?.cancel();
     for (final tab in _openTabs) {
-      (tab['controller'] as CodeController).dispose();
-      (tab['focusNode'] as FocusNode).dispose();
+      tab.controller.dispose();
+      tab.focusNode.dispose();
     }
     super.dispose();
   }
@@ -265,7 +263,7 @@ class _EditorScreenState extends State<EditorScreen> {
     // Load Last Active File
     final savedActiveFile = prefs.getString('last_active_file');
     if (savedActiveFile != null) {
-      final index = _openTabs.indexWhere((t) => t['path'] == savedActiveFile);
+      final index = _openTabs.indexWhere((t) => t.path == savedActiveFile);
       if (index != -1) {
         setState(() {
           _activeTabIndex = index;
@@ -302,19 +300,16 @@ class _EditorScreenState extends State<EditorScreen> {
   Future<void> _saveTabsPreference() async {
     final prefs = await SharedPreferences.getInstance();
     final validTabs = _openTabs
-        .where((t) => t['path'] != null && (t['path'] as String).isNotEmpty)
+        .where((t) => t.path != null && t.path!.isNotEmpty)
         .toList();
-    final List<Map<String, dynamic>> tabsData = validTabs.map((t) {
-      return {
-        'path': t['path'] as String,
-        'isRemote': t['isRemote'] as bool? ?? false,
-      };
+    final tabsData = validTabs.map((t) {
+      return {'path': t.path, 'isRemote': t.isRemote};
     }).toList();
     await prefs.setString('persisted_open_tabs', jsonEncode(tabsData));
 
     if (_activeTabIndex != -1 && _activeTabIndex < _openTabs.length) {
-      final activePath = _openTabs[_activeTabIndex]['path'];
-      if (activePath != null && (activePath as String).isNotEmpty) {
+      final activePath = _openTabs[_activeTabIndex].path;
+      if (activePath != null && activePath.isNotEmpty) {
         await prefs.setString('last_active_file', activePath);
       } else {
         await prefs.remove('last_active_file');
@@ -461,17 +456,11 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   void _createNewTab() {
-    final Map<String, dynamic> newTab = {
-      'path': null,
-      'name': 'untitled.js',
-      'hasUnsavedChanges': false,
-      'focusNode': FocusNode(),
-      'languageName': 'JS',
-    };
-    newTab['controller'] = _createController('', javascript, () {
-      final isChanged = newTab['controller'].text != '';
-      if (newTab['hasUnsavedChanges'] != isChanged) {
-        setState(() => newTab['hasUnsavedChanges'] = isChanged);
+    final newTab = EditorTab(focusNode: FocusNode(), languageName: 'JS');
+    newTab.controller = _createController('', javascript, () {
+      final isChanged = newTab.controller.text != '';
+      if (newTab.hasUnsavedChanges != isChanged) {
+        setState(() => newTab.hasUnsavedChanges = isChanged);
       }
     });
 
@@ -491,7 +480,7 @@ class _EditorScreenState extends State<EditorScreen> {
 
   String get _languageName {
     if (_activeTabIndex == -1) return 'JS';
-    return _openTabs[_activeTabIndex]['languageName'] as String? ?? 'TEXT';
+    return _openTabs[_activeTabIndex].languageName;
   }
 
   String _getInitialLanguageName(String? path) {
@@ -596,12 +585,12 @@ class _EditorScreenState extends State<EditorScreen> {
                           : null,
                       onTap: () {
                         setState(() {
-                          _openTabs[_activeTabIndex]['languageName'] =
-                              lang['displayName'];
-                          _activeController.language =
+                          _openTabs[_activeTabIndex].languageName =
+                              lang['displayName'] as String;
+                          _activeController!.language =
                               lang['highlight'] as Mode?;
                           applyLanguageSuggestions(
-                            _activeController,
+                            _activeController!,
                             lang['displayName'] as String,
                           );
                         });
@@ -778,31 +767,21 @@ class _EditorScreenState extends State<EditorScreen> {
     }
   }
 
-  Future<void> _openFile() async {
-    final result = await FilePicker.pickFiles(type: FileType.any);
-    if (result == null) return;
-    final path = result.files.single.path;
-    if (path == null) return;
-    final content = await FileService.readFile(path);
-    _addTab(path, content);
-  }
-
   void _addTab(String path, String content, {bool isRemote = false}) {
-    final existing = _openTabs.indexWhere((t) => t['path'] == path);
+    final existing = _openTabs.indexWhere((t) => t.path == path);
     if (existing == -1) {
-      final Map<String, dynamic> newTab = {
-        'path': path,
-        'name': FileUtils.getDisplayName(path),
-        'hasUnsavedChanges': false,
-        'isRemote': isRemote,
-        'focusNode': FocusNode(),
-        'languageName': _getInitialLanguageName(path),
-      };
-      newTab['initialContent'] = content;
-      newTab['controller'] = _createController(content, _langForPath(path), () {
-        final isChanged = newTab['controller'].text != newTab['initialContent'];
-        if (newTab['hasUnsavedChanges'] != isChanged) {
-          setState(() => newTab['hasUnsavedChanges'] = isChanged);
+      final newTab = EditorTab(
+        path: path,
+        name: FileUtils.getDisplayName(path),
+        isRemote: isRemote,
+        focusNode: FocusNode(),
+        initialContent: content,
+        languageName: _getInitialLanguageName(path),
+      );
+      newTab.controller = _createController(content, _langForPath(path), () {
+        final isChanged = newTab.controller.text != newTab.initialContent;
+        if (newTab.hasUnsavedChanges != isChanged) {
+          setState(() => newTab.hasUnsavedChanges = isChanged);
         }
         if (isChanged && _autoSaveEnabled) {
           _triggerAutoSave(newTab);
@@ -821,13 +800,30 @@ class _EditorScreenState extends State<EditorScreen> {
     _saveTabsPreference();
   }
 
+  Future<void> _writeFileContent(
+    String path,
+    String content,
+    bool isRemote,
+  ) async {
+    if (path.startsWith('content://')) {
+      await _termuxChannel.invokeMethod('writeSafFile', {
+        'uri': path,
+        'content': content,
+      });
+    } else if (isRemote && _activeSshSession != null) {
+      await _activeSshSession!.writeFile(path, content);
+    } else {
+      await File(path).writeAsString(content);
+    }
+  }
+
   Future<void> _saveFile() async {
     if (_activeTabIndex == -1) return;
     if (_activePath == null) {
       await _saveFileAs();
       return;
     }
-    if (_isSaving) {
+    if (_currentSave != null) {
       debugPrint('JALIDE_SAVE_BLOCKED: Save already in progress');
       return;
     }
@@ -836,39 +832,25 @@ class _EditorScreenState extends State<EditorScreen> {
       _formatCode(silent: true);
     }
 
-    setState(() => _isSaving = true);
+    final future = _writeFileContent(
+      _activePath!,
+      _activeController!.text,
+      _openTabs[_activeTabIndex].isRemote,
+    );
+    _currentSave = future;
     try {
-      debugPrint('JALIDE_ATTEMPT_SAVE: $_activePath');
-
-      if (_activePath!.startsWith('content://')) {
-        await _termuxChannel.invokeMethod('writeSafFile', {
-          'uri': _activePath,
-          'content': _activeController.text,
-        });
-      } else if (_openTabs[_activeTabIndex]['isRemote'] == true &&
-          _activeSshSession != null) {
-        await _activeSshSession!.writeFile(
-          _activePath!,
-          _activeController.text,
-        );
-      } else {
-        final file = File(_activePath!);
-        await file.writeAsString(_activeController.text);
-      }
-
-      setState(() {
-        _openTabs[_activeTabIndex]['hasUnsavedChanges'] = false;
-        _openTabs[_activeTabIndex]['initialContent'] = _activeController.text;
-      });
+      await future;
       if (!mounted) return;
+      setState(() {
+        _openTabs[_activeTabIndex].hasUnsavedChanges = false;
+        _openTabs[_activeTabIndex].initialContent = _activeController!.text;
+      });
       _showToast('Salvo com sucesso', type: _ToastType.success);
     } catch (e) {
       _showToast('Erro ao salvar: $e', type: _ToastType.error);
       debugPrint('JALIDE_SAVE_ERROR: $e');
     } finally {
-      if (mounted) {
-        setState(() => _isSaving = false);
-      }
+      _currentSave = null;
     }
   }
 
@@ -938,18 +920,18 @@ class _EditorScreenState extends State<EditorScreen> {
     debugPrint('JALIDE_SAVE_AS_PATH: $finalPath');
 
     try {
-      final content = _activeController.text;
+      final content = _activeController!.text;
       final file = File(finalPath);
       await file.writeAsString(content);
       setState(() {
-        _openTabs[_activeTabIndex]['path'] = finalPath;
-        _openTabs[_activeTabIndex]['name'] = p.basename(finalPath);
-        _openTabs[_activeTabIndex]['hasUnsavedChanges'] = false;
-        _openTabs[_activeTabIndex]['initialContent'] = content;
-        _openTabs[_activeTabIndex]['languageName'] = _getInitialLanguageName(
+        _openTabs[_activeTabIndex].path = finalPath;
+        _openTabs[_activeTabIndex].name = p.basename(finalPath);
+        _openTabs[_activeTabIndex].hasUnsavedChanges = false;
+        _openTabs[_activeTabIndex].initialContent = content;
+        _openTabs[_activeTabIndex].languageName = _getInitialLanguageName(
           finalPath,
         );
-        _activeController.language = _langForPath(finalPath);
+        _activeController!.language = _langForPath(finalPath);
       });
       _saveTabsPreference();
       // Atualiza o explorer se o arquivo foi salvo na pasta do projeto
@@ -964,96 +946,56 @@ class _EditorScreenState extends State<EditorScreen> {
     }
   }
 
-  void _triggerAutoSave(Map<String, dynamic> tab) {
+  void _triggerAutoSave(EditorTab tab) {
     _autoSaveTimer?.cancel();
     _autoSaveTimer = Timer(const Duration(milliseconds: 1500), () async {
       if (!mounted) return;
-      if (_isSaving) {
-        // Se já estiver salvando, reagenda o auto-salvamento para daqui a 1.5s
-        _triggerAutoSave(tab);
-        return;
-      }
+      if (_currentSave != null) return;
+
       final tabIndex = _openTabs.indexOf(tab);
-      if (tabIndex != -1 &&
-          tab['hasUnsavedChanges'] == true &&
-          tab['path'] != null) {
-        setState(() => _isSaving = true);
+      if (tabIndex != -1 && tab.hasUnsavedChanges && tab.path != null) {
+        final path = tab.path!;
+        final controller = tab.controller;
+        final isRemote = tab.isRemote;
+
+        final future = _writeFileContent(path, controller.text, isRemote);
+        _currentSave = future;
         try {
-          final path = tab['path'] as String;
-          final controller = tab['controller'] as CodeController;
-          final isRemote = tab['isRemote'] == true;
-
-          debugPrint('JALIDE_AUTOSAVE: $path');
-
-          if (path.startsWith('content://')) {
-            await _termuxChannel.invokeMethod('writeSafFile', {
-              'uri': path,
-              'content': controller.text,
-            });
-          } else if (isRemote && _activeSshSession != null) {
-            await _activeSshSession!.writeFile(path, controller.text);
-          } else {
-            final file = File(path);
-            await file.writeAsString(controller.text);
-          }
-
-          setState(() {
-            tab['hasUnsavedChanges'] = false;
-            tab['initialContent'] = controller.text;
-          });
+          await future;
+          if (!mounted) return;
+          tab.hasUnsavedChanges = false;
+          tab.initialContent = controller.text;
         } catch (e) {
           debugPrint('Auto-save error: $e');
         } finally {
-          if (mounted) {
-            setState(() => _isSaving = false);
-          }
+          _currentSave = null;
         }
       }
     });
   }
 
-  Future<void> _instantSaveTab(Map<String, dynamic> tab) async {
-    if (tab['hasUnsavedChanges'] == true && tab['path'] != null) {
-      if (_isSaving) {
-        // Se já está salvando, aguarda até que conclua (máximo de 2 segundos)
-        int retries = 0;
-        while (_isSaving && retries < 10 && mounted) {
-          await Future.delayed(const Duration(milliseconds: 200));
-          retries++;
-        }
+  Future<void> _instantSaveTab(EditorTab tab) async {
+    if (tab.hasUnsavedChanges && tab.path != null) {
+      if (_currentSave != null) {
+        await _currentSave!;
+        if (!mounted) return;
       }
 
-      if (!mounted) return;
-      setState(() => _isSaving = true);
+      final path = tab.path!;
+      final controller = tab.controller;
+      final isRemote = tab.isRemote;
+
+      final future = _writeFileContent(path, controller.text, isRemote);
+      _currentSave = future;
       try {
-        final path = tab['path'] as String;
-        final controller = tab['controller'] as CodeController;
-        final isRemote = tab['isRemote'] == true;
-
-        debugPrint('JALIDE_INSTANT_SAVE: $path');
-
-        if (path.startsWith('content://')) {
-          await _termuxChannel.invokeMethod('writeSafFile', {
-            'uri': path,
-            'content': controller.text,
-          });
-        } else if (isRemote && _activeSshSession != null) {
-          await _activeSshSession!.writeFile(path, controller.text);
-        } else {
-          final file = File(path);
-          await file.writeAsString(controller.text);
-        }
-
-        setState(() {
-          tab['hasUnsavedChanges'] = false;
-          tab['initialContent'] = controller.text;
-        });
+        await future;
+        if (!mounted) return;
+        tab.hasUnsavedChanges = false;
+        tab.initialContent = controller.text;
       } catch (e) {
         debugPrint('Instant save error: $e');
       } finally {
-        if (mounted) {
-          setState(() => _isSaving = false);
-        }
+        _currentSave = null;
       }
     }
   }
@@ -1070,13 +1012,13 @@ class _EditorScreenState extends State<EditorScreen> {
   // Insere snippet no cursor com auto-indentação
   void _insertSnippet(String snippet) {
     if (_activeTabIndex == -1) return;
-    final text = _activeController.text;
-    final sel = _activeController.selection;
+    final text = _activeController!.text;
+    final sel = _activeController!.selection;
 
     // Proteção contra seleção inválida
     if (!sel.isValid) {
       final insert = snippet.replaceAll(' ', '');
-      _activeController.text = text + insert;
+      _activeController!.text = text + insert;
       return;
     }
 
@@ -1099,7 +1041,7 @@ class _EditorScreenState extends State<EditorScreen> {
     };
 
     final insert = pairs[snippet] ?? snippet.replaceAll(' ', '');
-    _activeController.text = before + insert + after;
+    _activeController!.text = before + insert + after;
 
     // Posiciona o cursor no meio dos blocos/aspas
     int offset = sel.start + insert.length;
@@ -1110,88 +1052,37 @@ class _EditorScreenState extends State<EditorScreen> {
       offset = sel.start + 1;
     }
 
-    _activeController.selection = TextSelection.collapsed(offset: offset);
-    _activeFocusNode.requestFocus();
+    _activeController!.selection = TextSelection.collapsed(offset: offset);
+    _activeFocusNode!.requestFocus();
   }
 
   void _handleAuxKeyTap(String key) {
-    final bool isTerminalActive =
-        _isTerminalVisible &&
-        _activeTerminalState != null &&
-        (_activeTabIndex == -1 || !_activeFocusNode.hasFocus);
-
-    if (isTerminalActive) {
-      // Ctrl é disparado antes da tecla pelo teclado — rastreia o estado
-      if (key == 'Ctrl') {
-        setState(() => _ctrlActive = !_ctrlActive);
-        return;
-      }
-
-      if (_ctrlActive) {
-        setState(() => _ctrlActive = false);
-        if (key.startsWith('Z')) {
-          _activeTerminalState!.sendInput('\x1a');
-        } else if (key.startsWith('Y'))
-          _activeTerminalState!.sendInput('\x19');
-        else if (key.startsWith('A'))
-          _activeTerminalState!.sendInput('\x01');
-        else if (key.startsWith('C')) {
-          _activeTerminalState!.sendInput('\x03');
-          _showToast('Ctrl+C enviado');
-        } else if (key.startsWith('V')) {
-          Clipboard.getData(Clipboard.kTextPlain).then((data) {
-            if (data?.text != null)
-              _activeTerminalState!.sendInput(data!.text!);
-          });
-        } else if (key.startsWith('X')) {
-          _activeTerminalState!.sendInput('\x18');
-        } else if (key.startsWith('S')) {
-          _activeTerminalState!.sendInput('\x13');
-        }
-        return;
-      }
-
-      // Teclas de navegação e especiais no terminal
-      switch (key) {
-        case 'Tab':
-          _activeTerminalState!.sendInput('\t');
-          break;
-        case '←':
-          _activeTerminalState!.sendInput('\x1b[D');
-          break;
-        case '→':
-          _activeTerminalState!.sendInput('\x1b[C');
-          break;
-        case '↑':
-          _activeTerminalState!.sendInput('\x1b[A');
-          break;
-        case '↓':
-          _activeTerminalState!.sendInput('\x1b[B');
-          break;
-        case 'BACKSPACE':
-          _activeTerminalState!.sendInput('\x7f');
-          break;
-        case 'ESC':
-          _activeTerminalState!.sendInput('\x1b');
-          break;
-        case 'HOME':
-          _activeTerminalState!.sendInput('\x1b[H');
-          break;
-        case 'END':
-          _activeTerminalState!.sendInput('\x1b[F');
-          break;
-        case 'ENTER':
-          _activeTerminalState!.sendInput('\n');
-          break;
-        default:
-          _activeTerminalState!.sendInput(key.replaceAll(' ', ''));
-      }
+    if (_isTerminalActive) {
+      _handleTerminalKey(key);
       return;
     }
 
     if (_activeTabIndex == -1) return;
 
-    // Ctrl sequência: o widget manda 'Ctrl' + tecla em sequência
+    if (key == 'Ctrl') {
+      setState(() => _ctrlActive = !_ctrlActive);
+      return;
+    }
+
+    if (_ctrlActive) {
+      _handleCtrlShortcut(key);
+      return;
+    }
+
+    _handleEditorKey(key);
+  }
+
+  bool get _isTerminalActive =>
+      _isTerminalVisible &&
+      _activeTerminalState != null &&
+      (_activeTabIndex == -1 || !_activeFocusNode!.hasFocus);
+
+  void _handleTerminalKey(String key) {
     if (key == 'Ctrl') {
       setState(() => _ctrlActive = !_ctrlActive);
       return;
@@ -1199,238 +1090,340 @@ class _EditorScreenState extends State<EditorScreen> {
 
     if (_ctrlActive) {
       setState(() => _ctrlActive = false);
-
       if (key.startsWith('Z')) {
-        try {
-          (_activeController as dynamic).undo();
-        } catch (_) {
-          Actions.maybeInvoke<UndoTextIntent>(
-            context,
-            const UndoTextIntent(SelectionChangedCause.keyboard),
-          );
-        }
-      } else if (key.startsWith('Y')) {
-        try {
-          (_activeController as dynamic).redo();
-        } catch (_) {
-          Actions.maybeInvoke<RedoTextIntent>(
-            context,
-            const RedoTextIntent(SelectionChangedCause.keyboard),
-          );
-        }
-      } else if (key.startsWith('A')) {
-        _activeController.selection = TextSelection(
-          baseOffset: 0,
-          extentOffset: _activeController.text.length,
-        );
-      } else if (key.startsWith('C')) {
-        final sel = _activeController.selection;
-        if (sel.isValid && !sel.isCollapsed) {
-          Clipboard.setData(
-            ClipboardData(
-              text: _activeController.text.substring(sel.start, sel.end),
-            ),
-          );
-          _showToast('Copiado');
-        }
+        _activeTerminalState!.sendInput('\x1a');
+      } else if (key.startsWith('Y'))
+        _activeTerminalState!.sendInput('\x19');
+      else if (key.startsWith('A'))
+        _activeTerminalState!.sendInput('\x01');
+      else if (key.startsWith('C')) {
+        _activeTerminalState!.sendInput('\x03');
+        _showToast('Ctrl+C enviado');
       } else if (key.startsWith('V')) {
         Clipboard.getData(Clipboard.kTextPlain).then((data) {
           if (data?.text != null) {
-            final text = _activeController.text;
-            final sel = _activeController.selection;
-            if (sel.isValid) {
-              _activeController.value = _activeController.value.copyWith(
-                text:
-                    text.substring(0, sel.start) +
-                    data!.text! +
-                    text.substring(sel.end),
-                selection: TextSelection.collapsed(
-                  offset: sel.start + data.text!.length,
-                ),
-              );
-            }
+            _activeTerminalState!.sendInput(data!.text!);
           }
         });
       } else if (key.startsWith('X')) {
-        final sel = _activeController.selection;
-        if (sel.isValid && !sel.isCollapsed) {
-          final text = _activeController.text;
-          Clipboard.setData(
-            ClipboardData(text: text.substring(sel.start, sel.end)),
-          );
-          _activeController.value = _activeController.value.copyWith(
-            text: text.substring(0, sel.start) + text.substring(sel.end),
-            selection: TextSelection.collapsed(offset: sel.start),
-          );
-          _showToast('Recortado');
-        }
+        _activeTerminalState!.sendInput('\x18');
       } else if (key.startsWith('S')) {
-        _saveFile();
-      } else if (key.startsWith('D')) {
-        // Duplica a linha atual
-        final text = _activeController.text;
-        final sel = _activeController.selection;
-        if (sel.isValid) {
-          final before = text.substring(0, sel.start);
-          final lines = before.split('\n');
-          final currentLine = lines.last;
-          final lineStart = before.length - currentLine.length;
-          final lineEnd = text.indexOf('\n', lineStart);
-          final end = lineEnd == -1 ? text.length : lineEnd;
-          final line = text.substring(lineStart, end);
-          final newText =
-              '${text.substring(0, end)}\n$line${text.substring(end)}';
-          _activeController.value = _activeController.value.copyWith(
-            text: newText,
-            selection: TextSelection.collapsed(offset: end + 1 + line.length),
-          );
-        }
-      } else if (key.startsWith('F')) {
-        _formatCode();
+        _activeTerminalState!.sendInput('\x13');
       }
-      _activeFocusNode.requestFocus();
       return;
     }
 
-    // Teclas normais do editor
+    switch (key) {
+      case 'Tab':
+        _activeTerminalState!.sendInput('\t');
+        break;
+      case '←':
+        _activeTerminalState!.sendInput('\x1b[D');
+        break;
+      case '→':
+        _activeTerminalState!.sendInput('\x1b[C');
+        break;
+      case '↑':
+        _activeTerminalState!.sendInput('\x1b[A');
+        break;
+      case '↓':
+        _activeTerminalState!.sendInput('\x1b[B');
+        break;
+      case 'BACKSPACE':
+        _activeTerminalState!.sendInput('\x7f');
+        break;
+      case 'ESC':
+        _activeTerminalState!.sendInput('\x1b');
+        break;
+      case 'HOME':
+        _activeTerminalState!.sendInput('\x1b[H');
+        break;
+      case 'END':
+        _activeTerminalState!.sendInput('\x1b[F');
+        break;
+      case 'ENTER':
+        _activeTerminalState!.sendInput('\n');
+        break;
+      default:
+        _activeTerminalState!.sendInput(key.replaceAll(' ', ''));
+    }
+  }
+
+  void _handleCtrlShortcut(String key) {
+    setState(() => _ctrlActive = false);
+
+    if (key.startsWith('Z')) {
+      try {
+        (_activeController as dynamic).undo();
+      } catch (_) {
+        Actions.maybeInvoke<UndoTextIntent>(
+          context,
+          const UndoTextIntent(SelectionChangedCause.keyboard),
+        );
+      }
+    } else if (key.startsWith('Y')) {
+      try {
+        (_activeController as dynamic).redo();
+      } catch (_) {
+        Actions.maybeInvoke<RedoTextIntent>(
+          context,
+          const RedoTextIntent(SelectionChangedCause.keyboard),
+        );
+      }
+    } else if (key.startsWith('A')) {
+      _activeController!.selection = TextSelection(
+        baseOffset: 0,
+        extentOffset: _activeController!.text.length,
+      );
+    } else if (key.startsWith('C')) {
+      final sel = _activeController!.selection;
+      if (sel.isValid && !sel.isCollapsed) {
+        Clipboard.setData(
+          ClipboardData(
+            text: _activeController!.text.substring(sel.start, sel.end),
+          ),
+        );
+        _showToast('Copiado');
+      }
+    } else if (key.startsWith('V')) {
+      _pasteFromClipboard();
+    } else if (key.startsWith('X')) {
+      _cutSelection();
+    } else if (key.startsWith('S')) {
+      _saveFile();
+    } else if (key.startsWith('D')) {
+      _duplicateLine();
+    } else if (key.startsWith('F')) {
+      _formatCode();
+    }
+    _activeFocusNode!.requestFocus();
+  }
+
+  void _pasteFromClipboard() {
+    Clipboard.getData(Clipboard.kTextPlain).then((data) {
+      if (data?.text != null) {
+        final text = _activeController!.text;
+        final sel = _activeController!.selection;
+        if (sel.isValid) {
+          _activeController!.value = _activeController!.value.copyWith(
+            text:
+                text.substring(0, sel.start) +
+                data!.text! +
+                text.substring(sel.end),
+            selection: TextSelection.collapsed(
+              offset: sel.start + data.text!.length,
+            ),
+          );
+        }
+      }
+    });
+  }
+
+  void _cutSelection() {
+    final sel = _activeController!.selection;
+    if (sel.isValid && !sel.isCollapsed) {
+      final text = _activeController!.text;
+      Clipboard.setData(
+        ClipboardData(text: text.substring(sel.start, sel.end)),
+      );
+      _activeController!.value = _activeController!.value.copyWith(
+        text: text.substring(0, sel.start) + text.substring(sel.end),
+        selection: TextSelection.collapsed(offset: sel.start),
+      );
+      _showToast('Recortado');
+    }
+  }
+
+  void _duplicateLine() {
+    final text = _activeController!.text;
+    final sel = _activeController!.selection;
+    if (sel.isValid) {
+      final before = text.substring(0, sel.start);
+      final lines = before.split('\n');
+      final currentLine = lines.last;
+      final lineStart = before.length - currentLine.length;
+      final lineEnd = text.indexOf('\n', lineStart);
+      final end = lineEnd == -1 ? text.length : lineEnd;
+      final line = text.substring(lineStart, end);
+      final newText = '${text.substring(0, end)}\n$line${text.substring(end)}';
+      _activeController!.value = _activeController!.value.copyWith(
+        text: newText,
+        selection: TextSelection.collapsed(offset: end + 1 + line.length),
+      );
+    }
+  }
+
+  void _handleEditorKey(String key) {
     switch (key) {
       case 'Tab':
         _insertSnippet('  ');
         break;
       case '←':
-        final selL = _activeController.selection;
-        if (selL.isValid && selL.start > 0) {
-          _activeController.selection = TextSelection.collapsed(
-            offset: selL.start - 1,
-          );
-        }
+        _moveCursorLeft();
         break;
       case '→':
-        final selR = _activeController.selection;
-        if (selR.isValid && selR.start < _activeController.text.length) {
-          _activeController.selection = TextSelection.collapsed(
-            offset: selR.start + 1,
-          );
-        }
+        _moveCursorRight();
         break;
       case '↑':
-        final text = _activeController.text;
-        final sel = _activeController.selection;
-        if (sel.isValid) {
-          final before = text.substring(0, sel.start);
-          final lines = before.split('\n');
-          if (lines.length > 1) {
-            final col = lines.last.length;
-            final prevLine = lines[lines.length - 2];
-            final prevStart = before.length - col - 1 - prevLine.length;
-            _activeController.selection = TextSelection.collapsed(
-              offset: prevStart + col.clamp(0, prevLine.length),
-            );
-          }
-        }
+        _moveCursorUp();
         break;
       case '↓':
-        final textD = _activeController.text;
-        final selD = _activeController.selection;
-        if (selD.isValid) {
-          final before = textD.substring(0, selD.start);
-          final after = textD.substring(selD.start);
-          final col = before.split('\n').last.length;
-          final afterLines = after.split('\n');
-          if (afterLines.length > 1) {
-            final nextLine = afterLines[1];
-            final nextStart = before.length + afterLines[0].length + 1;
-            _activeController.selection = TextSelection.collapsed(
-              offset: nextStart + col.clamp(0, nextLine.length),
-            );
-          }
-        }
+        _moveCursorDown();
         break;
       case 'BACKSPACE':
-        final selBs = _activeController.selection;
-        if (selBs.isValid) {
-          final text = _activeController.text;
-          if (!selBs.isCollapsed) {
-            _activeController.value = _activeController.value.copyWith(
-              text: text.substring(0, selBs.start) + text.substring(selBs.end),
-              selection: TextSelection.collapsed(offset: selBs.start),
-            );
-          } else if (selBs.start > 0) {
-            _activeController.value = _activeController.value.copyWith(
-              text:
-                  text.substring(0, selBs.start - 1) +
-                  text.substring(selBs.start),
-              selection: TextSelection.collapsed(offset: selBs.start - 1),
-            );
-          }
-        }
+        _handleBackspace();
         break;
       case 'HOME':
-        final textH = _activeController.text;
-        final selH = _activeController.selection;
-        if (selH.isValid) {
-          final before = textH.substring(0, selH.start);
-          final lineStart = before.lastIndexOf('\n') + 1;
-          _activeController.selection = TextSelection.collapsed(
-            offset: lineStart,
-          );
-        }
+        _moveToLineStart();
         break;
       case 'END':
-        final textE = _activeController.text;
-        final selE = _activeController.selection;
-        if (selE.isValid) {
-          final after = textE.substring(selE.start);
-          final lineEnd = after.indexOf('\n');
-          final offset = lineEnd == -1 ? textE.length : selE.start + lineEnd;
-          _activeController.selection = TextSelection.collapsed(offset: offset);
-        }
+        _moveToLineEnd();
         break;
       case 'ENTER':
         _insertSnippet('\n');
         break;
       case 'SEL_UP':
-        final textSU = _activeController.text;
-        final selSU = _activeController.selection;
-        if (selSU.isValid) {
-          final before = textSU.substring(0, selSU.start);
-          final lines = before.split('\n');
-          if (lines.length > 1) {
-            final col = lines.last.length;
-            final prevLine = lines[lines.length - 2];
-            final prevStart = before.length - col - 1 - prevLine.length;
-            _activeController.selection = TextSelection(
-              baseOffset: selSU.baseOffset,
-              extentOffset: prevStart + col.clamp(0, prevLine.length),
-            );
-          }
-        }
+        _extendSelectionUp();
         break;
       case 'SEL_DOWN':
-        final textSD = _activeController.text;
-        final selSD = _activeController.selection;
-        if (selSD.isValid) {
-          final before = textSD.substring(0, selSD.extentOffset);
-          final after = textSD.substring(selSD.extentOffset);
-          final col = before.split('\n').last.length;
-          final afterLines = after.split('\n');
-          if (afterLines.length > 1) {
-            final nextLine = afterLines[1];
-            final nextStart = before.length + afterLines[0].length + 1;
-            _activeController.selection = TextSelection(
-              baseOffset: selSD.baseOffset,
-              extentOffset: nextStart + col.clamp(0, nextLine.length),
-            );
-          }
-        }
+        _extendSelectionDown();
         break;
       case 'ESC':
-        _activeFocusNode.unfocus();
+        _activeFocusNode!.unfocus();
         break;
       default:
         _insertSnippet(key);
     }
-    _activeFocusNode.requestFocus();
+    _activeFocusNode!.requestFocus();
+  }
+
+  void _moveCursorLeft() {
+    final sel = _activeController!.selection;
+    if (sel.isValid && sel.start > 0) {
+      _activeController!.selection = TextSelection.collapsed(
+        offset: sel.start - 1,
+      );
+    }
+  }
+
+  void _moveCursorRight() {
+    final sel = _activeController!.selection;
+    if (sel.isValid && sel.start < _activeController!.text.length) {
+      _activeController!.selection = TextSelection.collapsed(
+        offset: sel.start + 1,
+      );
+    }
+  }
+
+  void _moveCursorUp() {
+    final text = _activeController!.text;
+    final sel = _activeController!.selection;
+    if (sel.isValid) {
+      final before = text.substring(0, sel.start);
+      final lines = before.split('\n');
+      if (lines.length > 1) {
+        final col = lines.last.length;
+        final prevLine = lines[lines.length - 2];
+        final prevStart = before.length - col - 1 - prevLine.length;
+        _activeController!.selection = TextSelection.collapsed(
+          offset: prevStart + col.clamp(0, prevLine.length),
+        );
+      }
+    }
+  }
+
+  void _moveCursorDown() {
+    final text = _activeController!.text;
+    final sel = _activeController!.selection;
+    if (sel.isValid) {
+      final before = text.substring(0, sel.start);
+      final after = text.substring(sel.start);
+      final col = before.split('\n').last.length;
+      final afterLines = after.split('\n');
+      if (afterLines.length > 1) {
+        final nextLine = afterLines[1];
+        final nextStart = before.length + afterLines[0].length + 1;
+        _activeController!.selection = TextSelection.collapsed(
+          offset: nextStart + col.clamp(0, nextLine.length),
+        );
+      }
+    }
+  }
+
+  void _handleBackspace() {
+    final sel = _activeController!.selection;
+    if (sel.isValid) {
+      final text = _activeController!.text;
+      if (!sel.isCollapsed) {
+        _activeController!.value = _activeController!.value.copyWith(
+          text: text.substring(0, sel.start) + text.substring(sel.end),
+          selection: TextSelection.collapsed(offset: sel.start),
+        );
+      } else if (sel.start > 0) {
+        _activeController!.value = _activeController!.value.copyWith(
+          text: text.substring(0, sel.start - 1) + text.substring(sel.start),
+          selection: TextSelection.collapsed(offset: sel.start - 1),
+        );
+      }
+    }
+  }
+
+  void _moveToLineStart() {
+    final text = _activeController!.text;
+    final sel = _activeController!.selection;
+    if (sel.isValid) {
+      final before = text.substring(0, sel.start);
+      final lineStart = before.lastIndexOf('\n') + 1;
+      _activeController!.selection = TextSelection.collapsed(offset: lineStart);
+    }
+  }
+
+  void _moveToLineEnd() {
+    final text = _activeController!.text;
+    final sel = _activeController!.selection;
+    if (sel.isValid) {
+      final after = text.substring(sel.start);
+      final lineEnd = after.indexOf('\n');
+      final offset = lineEnd == -1 ? text.length : sel.start + lineEnd;
+      _activeController!.selection = TextSelection.collapsed(offset: offset);
+    }
+  }
+
+  void _extendSelectionUp() {
+    final text = _activeController!.text;
+    final sel = _activeController!.selection;
+    if (sel.isValid) {
+      final before = text.substring(0, sel.start);
+      final lines = before.split('\n');
+      if (lines.length > 1) {
+        final col = lines.last.length;
+        final prevLine = lines[lines.length - 2];
+        final prevStart = before.length - col - 1 - prevLine.length;
+        _activeController!.selection = TextSelection(
+          baseOffset: sel.baseOffset,
+          extentOffset: prevStart + col.clamp(0, prevLine.length),
+        );
+      }
+    }
+  }
+
+  void _extendSelectionDown() {
+    final text = _activeController!.text;
+    final sel = _activeController!.selection;
+    if (sel.isValid) {
+      final before = text.substring(0, sel.extentOffset);
+      final after = text.substring(sel.extentOffset);
+      final col = before.split('\n').last.length;
+      final afterLines = after.split('\n');
+      if (afterLines.length > 1) {
+        final nextLine = afterLines[1];
+        final nextStart = before.length + afterLines[0].length + 1;
+        _activeController!.selection = TextSelection(
+          baseOffset: sel.baseOffset,
+          extentOffset: nextStart + col.clamp(0, nextLine.length),
+        );
+      }
+    }
   }
 
   Future<void> _toggleGhostSuggestions() async {
@@ -1446,12 +1439,11 @@ class _EditorScreenState extends State<EditorScreen> {
   void _formatCode({bool silent = false}) {
     if (_activeTabIndex == -1) return;
 
-    final controller = _activeController;
+    final controller = _activeController!;
     final text = controller.text;
     if (text.isEmpty) return;
 
-    final lang =
-        _openTabs[_activeTabIndex]['languageName'] as String? ?? 'TEXT';
+    final lang = _openTabs[_activeTabIndex].languageName;
 
     try {
       final formatted = CodeFormatter.format(text, lang);
@@ -1648,6 +1640,57 @@ class _EditorScreenState extends State<EditorScreen> {
       );
     } catch (e) {
       _showToast('Erro ao excluir: $e', type: _ToastType.error);
+    }
+  }
+
+  Future<void> _renameItem(
+    String path,
+    String newName,
+    bool isDir,
+    bool isRemote,
+    bool isSaf,
+  ) async {
+    if (isSaf) {
+      _showToast('Renomear via SAF ainda não está disponível');
+      return;
+    }
+
+    try {
+      final parentDir = isRemote ? p.posix.dirname(path) : p.dirname(path);
+      final newPath = isRemote
+          ? p.posix.join(parentDir, newName)
+          : p.join(parentDir, newName);
+
+      if (isRemote && _activeSshSession != null) {
+        await _activeSshSession!.renamePath(path, newPath);
+      } else {
+        if (isDir) {
+          await Directory(path).rename(newPath);
+        } else {
+          await File(path).rename(newPath);
+        }
+      }
+
+      if (!isDir && _activePath == path && _activeTabIndex != -1) {
+        setState(() {
+          _openTabs[_activeTabIndex].path = newPath;
+          _openTabs[_activeTabIndex].name = newName;
+        });
+      }
+
+      final refreshPath = isRemote ? p.posix.dirname(path) : p.dirname(path);
+      if (isRemote) {
+        await _loadRemoteProjectFiles(refreshPath);
+      } else {
+        await _loadProjectFiles(refreshPath);
+      }
+
+      _showToast(
+        '${isDir ? 'Pasta' : 'Arquivo'} renomeado com sucesso',
+        type: _ToastType.success,
+      );
+    } catch (e) {
+      _showToast('Erro ao renomear: $e', type: _ToastType.error);
     }
   }
 
@@ -2080,6 +2123,7 @@ class _EditorScreenState extends State<EditorScreen> {
           onCreateFile: (basePath) => _showCreateDialog(true, basePath),
           onCreateFolder: (basePath) => _showCreateDialog(false, basePath),
           onDeleteItem: _deleteItem,
+          onRenameItem: _renameItem,
           termuxChannel: _termuxChannel,
           sshSession: _activeSshSession,
           isRemoteProject: _isRemoteProject,
@@ -2151,7 +2195,7 @@ class _EditorScreenState extends State<EditorScreen> {
             if (_activeTabIndex != -1)
               GhostSuggestionBar(
                 key: ValueKey('ghost_$_activeTabIndex'),
-                controller: _activeController,
+                controller: _activeController!,
                 languageName: _languageName,
                 enabled: _ghostSuggestionsEnabled,
               ),
@@ -2266,12 +2310,7 @@ class _EditorScreenState extends State<EditorScreen> {
           ),
           tooltip: 'Executar arquivo',
         ),
-        IconButton(
-          onPressed: _openFile,
-          icon: const Icon(Icons.folder_open_outlined, size: 20),
-          color: _theme.textMuted,
-          tooltip: 'Abrir arquivo',
-        ),
+
         IconButton(
           onPressed: _activeHasUnsavedChanges ? _saveFile : null,
           icon: Icon(
@@ -2285,11 +2324,11 @@ class _EditorScreenState extends State<EditorScreen> {
           onPressed: () {
             Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => const DonationScreen()),
+              MaterialPageRoute(builder: (_) => const AboutScreen()),
             );
           },
-          icon: const Icon(Icons.favorite, size: 20, color: Colors.redAccent),
-          tooltip: 'Apoiar Projeto',
+          icon: Icon(Icons.info_outline, size: 22, color: _theme.textMuted),
+          tooltip: 'Sobre',
         ),
         IconButton(
           onPressed: _activeTabIndex != -1 ? _openAIDialog : null,
@@ -2318,7 +2357,38 @@ class _EditorScreenState extends State<EditorScreen> {
             if (v == 'format') _formatCode();
             if (v == 'ghost') _toggleGhostSuggestions();
             if (v == 'ai_settings') _showAISettingsDialog();
-            if (v == 'exit') SystemNavigator.pop();
+            if (v == 'exit') {
+              showDialog(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  backgroundColor: _theme.surface,
+                  title: Text('Sair', style: TextStyle(color: _theme.textPri)),
+                  content: Text(
+                    'Tem certeza que deseja sair da aplicação?',
+                    style: TextStyle(color: _theme.textMuted),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: Text(
+                        'Cancelar',
+                        style: TextStyle(color: _theme.textMuted),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        SystemNavigator.pop();
+                      },
+                      child: const Text(
+                        'Sair',
+                        style: TextStyle(color: Colors.redAccent),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
           },
           itemBuilder: (_) => [
             _menuItem('new', 'Novo arquivo', Icons.add_outlined),
@@ -2398,11 +2468,11 @@ class _EditorScreenState extends State<EditorScreen> {
 
   void _closeTab(int index) {
     final tab = _openTabs[index];
-    final bool hasUnsaved = tab['hasUnsavedChanges'] as bool;
+    final bool hasUnsaved = tab.hasUnsavedChanges;
 
     void proceedClose() {
-      final controller = tab['controller'] as CodeController;
-      final focusNode = tab['focusNode'] as FocusNode;
+      final controller = tab.controller;
+      final focusNode = tab.focusNode;
 
       setState(() {
         _openTabs.removeAt(index);
@@ -2557,7 +2627,7 @@ class _EditorScreenState extends State<EditorScreen> {
     showDialog(
       context: context,
       builder: (_) => AIDialog(
-        selectedCode: _activeTabIndex != -1 ? _activeController.text : null,
+        selectedCode: _activeTabIndex != -1 ? _activeController!.text : null,
         language: _getLanguageForCurrentFile(),
       ),
     );
@@ -2645,10 +2715,10 @@ class _EditorScreenState extends State<EditorScreen> {
               Future.delayed(const Duration(milliseconds: 50), () {
                 if (!mounted) return;
                 try {
-                  final selection = _activeController.selection;
+                  final selection = _activeController!.selection;
                   // Se o TextField tentou selecionar uma palavra, forçamos o cursor simples
                   if (selection.baseOffset != selection.extentOffset) {
-                    _activeController.selection = TextSelection.collapsed(
+                    _activeController!.selection = TextSelection.collapsed(
                       offset: selection.extentOffset,
                     );
                   }
@@ -2685,8 +2755,8 @@ class _EditorScreenState extends State<EditorScreen> {
           ),
           child: CodeField(
             key: ValueKey(_activeTabIndex),
-            controller: _activeController,
-            focusNode: _activeFocusNode,
+            controller: _activeController!,
+            focusNode: _activeFocusNode!,
             expands: true,
             minLines: null,
             maxLines: null,

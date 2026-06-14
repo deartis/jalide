@@ -40,11 +40,17 @@ class AIService {
     } catch (e) {
       debugPrint('Erro ao ler do Secure Storage: $e');
     }
+    // Migração: versões antigas salvavam a chave em SharedPreferences
     try {
       final prefs = await SharedPreferences.getInstance();
-      return prefs.getString(_apiKeyStorageKey);
+      final oldKey = prefs.getString(_apiKeyStorageKey);
+      if (oldKey != null) {
+        await _storage.write(key: _apiKeyStorageKey, value: oldKey);
+        await prefs.remove(_apiKeyStorageKey);
+        return oldKey;
+      }
     } catch (e) {
-      debugPrint('Erro ao ler do SharedPreferences: $e');
+      debugPrint('Erro ao migrar chave do SharedPreferences: $e');
     }
     return null;
   }
@@ -72,12 +78,6 @@ class AIService {
       await _storage.write(key: _apiKeyStorageKey, value: value);
     } catch (e) {
       debugPrint('Erro ao gravar no Secure Storage: $e');
-    }
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_apiKeyStorageKey, value);
-    } catch (e) {
-      debugPrint('Erro ao gravar no SharedPreferences: $e');
     }
   }
 

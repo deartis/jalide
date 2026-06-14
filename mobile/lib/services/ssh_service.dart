@@ -85,6 +85,8 @@ class SshSession {
   // Streams bidirecionais do shell para o terminal xterm
   StreamController<Uint8List>? _outputController;
   StreamSink<Uint8List>? _inputSink;
+  StreamSubscription<Uint8List>? _stdoutSubscription;
+  StreamSubscription<Uint8List>? _stderrSubscription;
 
   SshSession({required this.profile}) : state = SshConnectionState.disconnected;
 
@@ -130,6 +132,10 @@ class SshSession {
 
   /// Inicia uma sessão de shell interativo para o terminal
   Future<void> openShell({int width = 80, int height = 24}) async {
+    // Cancela subscriptions anteriores se houver (ex.: reconexão)
+    _stdoutSubscription?.cancel();
+    _stderrSubscription?.cancel();
+
     _shellSession = await _client!.shell(
       pty: SSHPtyConfig(type: 'xterm-256color', width: width, height: height),
     );
@@ -138,7 +144,7 @@ class SshSession {
     _inputSink = _shellSession!.stdin;
 
     // Shell → terminal
-    _shellSession!.stdout.listen(
+    _stdoutSubscription = _shellSession!.stdout.listen(
       (data) {
         if (_outputController != null && !_outputController!.isClosed) {
           _outputController!.add(data);
@@ -153,7 +159,7 @@ class SshSession {
       cancelOnError: false,
     );
 
-    _shellSession!.stderr.listen(
+    _stderrSubscription = _shellSession!.stderr.listen(
       (data) {
         if (_outputController != null && !_outputController!.isClosed) {
           _outputController!.add(data);
@@ -241,6 +247,12 @@ class SshSession {
     await _client!.run('$command ${_escapeShellArg(path)}');
   }
 
+  /// Renomeia arquivo ou pasta remota
+  Future<void> renamePath(String oldPath, String newPath) async {
+    final sftp = await _getSftp();
+    await sftp.rename(oldPath, newPath);
+  }
+
   /// Retorna o diretório home do usuário remoto
   Future<String> getHomeDir() async {
     final sftp = await _getSftp();
@@ -252,11 +264,15 @@ class SshSession {
   }
 
   Future<void> disconnect() async {
+    _stdoutSubscription?.cancel();
+    _stderrSubscription?.cancel();
     await _outputController?.close();
     _shellSession?.close();
     _sftp?.close();
     _client?.close();
     state = SshConnectionState.disconnected;
+    _stdoutSubscription = null;
+    _stderrSubscription = null;
     _sftp = null;
     _sftpFuture = null;
     _shellSession = null;

@@ -17,6 +17,7 @@ class FileExplorerDrawer extends StatefulWidget {
   final void Function(String?) onCreateFile;
   final void Function(String?) onCreateFolder;
   final void Function(String path, bool isDir, bool isRemote, bool isSaf) onDeleteItem;
+  final void Function(String path, String newName, bool isDir, bool isRemote, bool isSaf) onRenameItem;
   final MethodChannel termuxChannel;
   final SshSession? sshSession;
   final bool isRemoteProject;
@@ -32,6 +33,7 @@ class FileExplorerDrawer extends StatefulWidget {
     required this.onCreateFile,
     required this.onCreateFolder,
     required this.onDeleteItem,
+    required this.onRenameItem,
     required this.termuxChannel,
     this.sshSession,
     this.isRemoteProject = false,
@@ -311,11 +313,104 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
                     const Divider(height: 1, color: Color(0x1FFFFFFF)),
                     _buildActionTile(
                       context,
-                      icon: Icons.more_horiz,
-                      title: 'Mais opções',
-                      subtitle: 'Em breve: renomear, mover e copiar',
-                      accent: theme.textMuted,
-                      onTap: () => Navigator.pop(ctx),
+                      icon: Icons.edit_outlined,
+                      title: 'Renomear',
+                      subtitle: isDir ? 'Renomear esta pasta' : 'Renomear este arquivo',
+                      accent: const Color(0xFF7AA2F7),
+                      onTap: () async {
+                        Navigator.pop(ctx);
+                        String typedValue = label;
+                        final newName = await showDialog<String>(
+                          context: context,
+                          barrierDismissible: false,
+                          builder: (confirmCtx) => StatefulBuilder(
+                            builder: (dialogContext, setState) {
+                              final canConfirm = typedValue.trim().isNotEmpty && typedValue.trim() != label;
+                              return Dialog(
+                                backgroundColor: Colors.transparent,
+                                insetPadding: const EdgeInsets.symmetric(horizontal: 20),
+                                child: Container(
+                                  padding: const EdgeInsets.all(20),
+                                  decoration: BoxDecoration(
+                                    color: theme.surface,
+                                    borderRadius: BorderRadius.circular(24),
+                                    border: Border.all(color: theme.border, width: 1),
+                                  ),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.all(12),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFF7AA2F7).withValues(alpha: 0.12),
+                                              borderRadius: BorderRadius.circular(16),
+                                            ),
+                                            child: const Icon(Icons.edit, color: Color(0xFF7AA2F7), size: 24),
+                                          ),
+                                          const SizedBox(width: 14),
+                                          Expanded(
+                                            child: Text(
+                                              'Renomear',
+                                              style: TextStyle(color: theme.textPri, fontWeight: FontWeight.bold, fontSize: 18),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 16),
+                                      Text(
+                                        'Digite o novo nome para ${isDir ? 'a pasta' : 'o arquivo'}:',
+                                        style: TextStyle(color: theme.textMuted, fontSize: 14, height: 1.4),
+                                      ),
+                                      const SizedBox(height: 14),
+                                      TextFormField(
+                                        autofocus: true,
+                                        initialValue: label,
+                                        onChanged: (value) {
+                                          typedValue = value;
+                                          setState(() {});
+                                        },
+                                        style: TextStyle(color: theme.textPri),
+                                        decoration: InputDecoration(
+                                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: theme.border)),
+                                          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFF7AA2F7))),
+                                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 18),
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.end,
+                                        children: [
+                                          TextButton(
+                                            onPressed: () => Navigator.pop(confirmCtx, false),
+                                            child: Text('Cancelar', style: TextStyle(color: theme.textMuted)),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          ElevatedButton.icon(
+                                            onPressed: canConfirm ? () => Navigator.pop(confirmCtx, typedValue.trim()) : null,
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: const Color(0xFF7AA2F7),
+                                              foregroundColor: Colors.white,
+                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                            ),
+                                            icon: const Icon(Icons.check, size: 18),
+                                            label: const Text('Renomear'),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        );
+                        if (newName != null) {
+                          widget.onRenameItem(path, newName, isDir, isRemote, isSaf);
+                        }
+                      },
                     ),
                   ],
                 ),

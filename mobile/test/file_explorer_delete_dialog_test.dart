@@ -32,6 +32,7 @@ void main() {
             onDeleteItem: (path, isDir, isRemote, isSaf) {
               deleted = true;
             },
+            onRenameItem: (path, newName, isDir, isRemote, isSaf) {},
             termuxChannel: const MethodChannel('termux'),
           ),
         ),
