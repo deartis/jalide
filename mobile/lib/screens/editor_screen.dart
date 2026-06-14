@@ -25,9 +25,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/file_service.dart';
 import '../services/ai_service.dart';
 import '../services/ssh_connection_manager.dart';
-//import '../services/ssh_service.dart';
 import '../theme/jalide_theme.dart';
-import '../utils/code_completion.dart';
+import '../controllers/editor_tab_controller.dart';
 import '../widgets/aux_keyboard.dart';
 import '../widgets/ghost_suggestion_bar.dart';
 import '../widgets/terminal_panel.dart';
@@ -37,7 +36,6 @@ import '../widgets/editor_tabs_bar.dart';
 import '../widgets/ai_dialog.dart';
 import '../widgets/ai_settings_dialog.dart';
 import '../widgets/ssh_connection_status_widget.dart';
-import '../utils/file_utils.dart';
 import '../utils/code_formatter.dart';
 import 'ssh_connect_screen.dart';
 
@@ -66,23 +64,17 @@ class _SnackBarStyle {
 
 class _EditorScreenState extends State<EditorScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-  // Tabs abertas
-  final List<EditorTab> _openTabs = [];
-  int _activeTabIndex = -1;
 
-  // Getters para a aba ativa (nullable — chamadores devem verificar _activeTabIndex)
-  CodeController? get _activeController =>
-      _activeTabIndex != -1 ? _openTabs[_activeTabIndex].controller : null;
+  // Controller de Tabs
+  late final EditorTabController _tabController;
 
-  FocusNode? get _activeFocusNode =>
-      _activeTabIndex != -1 ? _openTabs[_activeTabIndex].focusNode : null;
-
-  String? get _activePath =>
-      _activeTabIndex != -1 ? _openTabs[_activeTabIndex].path : null;
-
-  bool get _activeHasUnsavedChanges => _activeTabIndex != -1
-      ? _openTabs[_activeTabIndex].hasUnsavedChanges
-      : false;
+  // Getters delegados ao controller
+  CodeController? get _activeController => _tabController.activeController;
+  FocusNode? get _activeFocusNode => _tabController.activeFocusNode;
+  String? get _activePath => _tabController.activePath;
+  bool get _activeHasUnsavedChanges => _tabController.hasUnsavedChanges;
+  String get _fileName => _tabController.fileName;
+  String get _languageName => _tabController.languageName;
 
   JalideThemeVariant get _theme => ThemeProvider.of(context).current;
 
@@ -102,6 +94,7 @@ class _EditorScreenState extends State<EditorScreen> {
   List<Map<String, dynamic>> _projectFiles = [];
 
   // Configurações
+  final AIService _aiService = AIService();
   double _fontSize = 14.0;
   bool _autoSaveEnabled = true;
   bool _ghostSuggestionsEnabled = true;
@@ -144,6 +137,21 @@ class _EditorScreenState extends State<EditorScreen> {
   @override
   void initState() {
     super.initState();
+    _tabController = EditorTabController();
+    _tabController.onUnsavedChanged = (a, b) {
+      if (mounted) setState(() {});
+    };
+    _tabController.onAutoSaveTriggered = (index) {
+      if (_autoSaveEnabled && mounted && index < _tabController.openTabs.length) {
+        final tab = _tabController.openTabs[index];
+        if (tab.hasUnsavedChanges) {
+          _triggerAutoSave(tab);
+        }
+      }
+    };
+    _tabController.addListener(() {
+      if (mounted) setState(() {});
+    });
     _sshProfileManager.load();
     _sshConnectionManager = SshConnectionManager(
       profileManager: _sshProfileManager,
@@ -169,18 +177,15 @@ class _EditorScreenState extends State<EditorScreen> {
   void dispose() {
     _sshConnectionManager.dispose();
     _autoSaveTimer?.cancel();
-    for (final tab in _openTabs) {
-      tab.controller.dispose();
-      tab.focusNode.dispose();
-    }
+    _tabController.disposeTabs();
+    _tabController.dispose();
     super.dispose();
   }
 
   Future<void> _initializeAI() async {
     try {
-      final aiService = AIService();
-      if (await aiService.hasApiKey()) {
-        await aiService.initialize();
+      if (await _aiService.hasApiKey()) {
+        await _aiService.initialize();
         debugPrint('✅ AIService inicializado com sucesso');
       } else {
         debugPrint('ℹ️ AIService não inicializado: Nenhuma chave salva');
@@ -251,7 +256,7 @@ class _EditorScreenState extends State<EditorScreen> {
                   debugPrint('JALIDE_LOAD_PERSISTED_TAB_READ_ERROR: $e');
                 }
               }
-              _addTab(path, content, isRemote: isRemote);
+              _tabController.addOrActivateTab(path, content, isRemote: isRemote);
             }
           }
         }
@@ -263,11 +268,10 @@ class _EditorScreenState extends State<EditorScreen> {
     // Load Last Active File
     final savedActiveFile = prefs.getString('last_active_file');
     if (savedActiveFile != null) {
-      final index = _openTabs.indexWhere((t) => t.path == savedActiveFile);
+      final index = _tabController.openTabs
+          .indexWhere((t) => t.path == savedActiveFile);
       if (index != -1) {
-        setState(() {
-          _activeTabIndex = index;
-        });
+        _tabController.setActiveTab(index);
       } else {
         bool exists = false;
         if (savedActiveFile.startsWith('content://')) {
@@ -279,14 +283,14 @@ class _EditorScreenState extends State<EditorScreen> {
         if (exists) {
           try {
             final content = await FileService.readFile(savedActiveFile);
-            _addTab(savedActiveFile, content);
+            _tabController.addOrActivateTab(savedActiveFile, content);
           } catch (_) {}
         }
       }
     }
 
-    if (mounted && _openTabs.isEmpty) {
-      _createNewTab();
+    if (mounted && _tabController.openTabs.isEmpty) {
+      _tabController.createNewTab();
     }
   }
 
@@ -297,27 +301,7 @@ class _EditorScreenState extends State<EditorScreen> {
     await prefs.setDouble('last_font_size', _fontSize);
   }
 
-  Future<void> _saveTabsPreference() async {
-    final prefs = await SharedPreferences.getInstance();
-    final validTabs = _openTabs
-        .where((t) => t.path != null && t.path!.isNotEmpty)
-        .toList();
-    final tabsData = validTabs.map((t) {
-      return {'path': t.path, 'isRemote': t.isRemote};
-    }).toList();
-    await prefs.setString('persisted_open_tabs', jsonEncode(tabsData));
-
-    if (_activeTabIndex != -1 && _activeTabIndex < _openTabs.length) {
-      final activePath = _openTabs[_activeTabIndex].path;
-      if (activePath != null && activePath.isNotEmpty) {
-        await prefs.setString('last_active_file', activePath);
-      } else {
-        await prefs.remove('last_active_file');
-      }
-    } else {
-      await prefs.remove('last_active_file');
-    }
-  }
+  Future<void> _saveTabsPreference() => _tabController.saveTabsPreference();
 
   Future<void> _loadProjectFiles(String path) async {
     if (path.startsWith('content://')) {
@@ -412,106 +396,12 @@ class _EditorScreenState extends State<EditorScreen> {
     }
   }
 
-  CodeController _createController(
-    String text,
-    dynamic language,
-    VoidCallback onChanged,
-  ) {
-    final controller = CodeController(
-      text: text,
-      language: language,
-      patternMap: {
-        r'\bTODO\b': const TextStyle(
-          color: Color(0xFFE07B1A),
-          fontWeight: FontWeight.bold,
-        ),
-        r'\bFIXME\b': const TextStyle(
-          color: Color(0xFFFF6B6B),
-          fontWeight: FontWeight.bold,
-        ),
-        r'\bHACK\b': const TextStyle(color: Color(0xFFFFD580)),
-      },
-    );
-    // Aplica sugestões padrão baseadas na linguagem
-    final langName = _getLanguageDisplayName(language);
-    applyLanguageSuggestions(controller, langName);
-
-    controller.addListener(() {
-      if (mounted) onChanged();
-    });
-    return controller;
-  }
-
-  String _getLanguageDisplayName(dynamic language) {
-    if (language == null) return 'JS';
-    if (language == javascript) return 'JS';
-    if (language == json) return 'JSON';
-    if (language == python) return 'Python';
-    if (language == xml) return 'HTML';
-    if (language == css) return 'CSS';
-    if (language == dart) return 'Dart';
-    if (language == cpp) return 'C++';
-    if (language == markdown) return 'Markdown';
-    return 'JS';
-  }
-
-  void _createNewTab() {
-    final newTab = EditorTab(focusNode: FocusNode(), languageName: 'JS');
-    newTab.controller = _createController('', javascript, () {
-      final isChanged = newTab.controller.text != '';
-      if (newTab.hasUnsavedChanges != isChanged) {
-        setState(() => newTab.hasUnsavedChanges = isChanged);
-      }
-    });
-
-    setState(() {
-      _openTabs.add(newTab);
-      _activeTabIndex = _openTabs.length - 1;
-    });
-    _saveTabsPreference();
-  }
-
-  String get _fileName {
-    if (_activeTabIndex == -1) return 'JALIDE';
-    return _activePath == null
-        ? 'untitled.js'
-        : FileUtils.getDisplayName(_activePath!);
-  }
-
-  String get _languageName {
-    if (_activeTabIndex == -1) return 'JS';
-    return _openTabs[_activeTabIndex].languageName;
-  }
-
-  String _getInitialLanguageName(String? path) {
-    if (path == null) return 'JS';
-    final ext = p.extension(path).toLowerCase();
-    const map = {
-      '.json': 'JSON',
-      '.js': 'JS',
-      '.jsx': 'JS',
-      '.ts': 'TS',
-      '.tsx': 'TSX',
-      '.mjs': 'ESM',
-      '.py': 'Python',
-      '.pyw': 'Python',
-      '.html': 'HTML',
-      '.htm': 'HTML',
-      '.css': 'CSS',
-      '.dart': 'Dart',
-      '.cpp': 'C++',
-      '.hpp': 'C++',
-      '.cc': 'C++',
-      '.c': 'C',
-      '.h': 'C/C++',
-      '.md': 'Markdown',
-      '.markdown': 'Markdown',
-    };
-    return map[ext] ?? 'TEXT';
-  }
+  // Métodos movidos para EditorTabController:
+  // _createController, _getLanguageDisplayName, _createNewTab,
+  // _fileName, _languageName, _getInitialLanguageName, _langForPath
 
   void _showLanguageSelector() {
-    if (_activeTabIndex == -1) return;
+    if (_tabController.activeTabIndex == -1) return;
 
     final languages = [
       {'name': 'JavaScript', 'highlight': javascript, 'displayName': 'JS'},
@@ -523,6 +413,8 @@ class _EditorScreenState extends State<EditorScreen> {
       {'name': 'C++', 'highlight': cpp, 'displayName': 'C++'},
       {'name': 'Markdown', 'highlight': markdown, 'displayName': 'Markdown'},
     ];
+
+    final activeIndex = _tabController.activeTabIndex;
 
     showModalBottomSheet(
       context: context,
@@ -560,7 +452,7 @@ class _EditorScreenState extends State<EditorScreen> {
                   itemCount: languages.length,
                   itemBuilder: (ctx, index) {
                     final lang = languages[index];
-                    final isCurrent = _languageName == lang['displayName'];
+                    final isCurrent = _tabController.languageName == lang['displayName'];
                     return ListTile(
                       dense: true,
                       contentPadding: const EdgeInsets.symmetric(
@@ -584,16 +476,11 @@ class _EditorScreenState extends State<EditorScreen> {
                             )
                           : null,
                       onTap: () {
-                        setState(() {
-                          _openTabs[_activeTabIndex].languageName =
-                              lang['displayName'] as String;
-                          _activeController!.language =
-                              lang['highlight'] as Mode?;
-                          applyLanguageSuggestions(
-                            _activeController!,
-                            lang['displayName'] as String,
-                          );
-                        });
+                        _tabController.updateLanguage(
+                          activeIndex,
+                          lang['displayName'] as String,
+                          lang['highlight'] as Mode?,
+                        );
                         Navigator.pop(ctx);
                       },
                     );
@@ -608,7 +495,7 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   Future<void> _runActiveFile() async {
-    if (_activeTabIndex == -1) {
+    if (_tabController.activeTabIndex == -1) {
       _showToast('Nenhum arquivo aberto');
       return;
     }
@@ -619,7 +506,7 @@ class _EditorScreenState extends State<EditorScreen> {
     }
 
     // Se o arquivo tiver alterações não salvas, salva antes de rodar!
-    if (_activeHasUnsavedChanges) {
+    if (_tabController.hasUnsavedChanges) {
       _showToast('Salvando alterações...');
       await _saveFile();
     }
@@ -768,36 +655,7 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   void _addTab(String path, String content, {bool isRemote = false}) {
-    final existing = _openTabs.indexWhere((t) => t.path == path);
-    if (existing == -1) {
-      final newTab = EditorTab(
-        path: path,
-        name: FileUtils.getDisplayName(path),
-        isRemote: isRemote,
-        focusNode: FocusNode(),
-        initialContent: content,
-        languageName: _getInitialLanguageName(path),
-      );
-      newTab.controller = _createController(content, _langForPath(path), () {
-        final isChanged = newTab.controller.text != newTab.initialContent;
-        if (newTab.hasUnsavedChanges != isChanged) {
-          setState(() => newTab.hasUnsavedChanges = isChanged);
-        }
-        if (isChanged && _autoSaveEnabled) {
-          _triggerAutoSave(newTab);
-        }
-      });
-
-      setState(() {
-        _openTabs.add(newTab);
-        _activeTabIndex = _openTabs.length - 1;
-      });
-    } else {
-      setState(() {
-        _activeTabIndex = existing;
-      });
-    }
-    _saveTabsPreference();
+    _tabController.addOrActivateTab(path, content, isRemote: isRemote);
   }
 
   Future<void> _writeFileContent(
@@ -818,7 +676,7 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   Future<void> _saveFile() async {
-    if (_activeTabIndex == -1) return;
+    if (_tabController.activeTabIndex == -1) return;
     if (_activePath == null) {
       await _saveFileAs();
       return;
@@ -835,16 +693,13 @@ class _EditorScreenState extends State<EditorScreen> {
     final future = _writeFileContent(
       _activePath!,
       _activeController!.text,
-      _openTabs[_activeTabIndex].isRemote,
+      _tabController.activeTab?.isRemote ?? false,
     );
     _currentSave = future;
     try {
       await future;
       if (!mounted) return;
-      setState(() {
-        _openTabs[_activeTabIndex].hasUnsavedChanges = false;
-        _openTabs[_activeTabIndex].initialContent = _activeController!.text;
-      });
+      _tabController.markTabSaved(_tabController.activeTabIndex);
       _showToast('Salvo com sucesso', type: _ToastType.success);
     } catch (e) {
       _showToast('Erro ao salvar: $e', type: _ToastType.error);
@@ -855,7 +710,7 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   Future<void> _saveFileAs() async {
-    if (_activeTabIndex == -1) return;
+    if (_tabController.activeTabIndex == -1) return;
 
     final currentName = _activePath == null
         ? 'untitled.js'
@@ -923,16 +778,11 @@ class _EditorScreenState extends State<EditorScreen> {
       final content = _activeController!.text;
       final file = File(finalPath);
       await file.writeAsString(content);
-      setState(() {
-        _openTabs[_activeTabIndex].path = finalPath;
-        _openTabs[_activeTabIndex].name = p.basename(finalPath);
-        _openTabs[_activeTabIndex].hasUnsavedChanges = false;
-        _openTabs[_activeTabIndex].initialContent = content;
-        _openTabs[_activeTabIndex].languageName = _getInitialLanguageName(
-          finalPath,
-        );
-        _activeController!.language = _langForPath(finalPath);
-      });
+      _tabController.updateTabPath(_tabController.activeTabIndex, finalPath);
+      _tabController.updateTabLanguageFromPath(
+        _tabController.activeTabIndex, finalPath,
+      );
+      _tabController.markTabSaved(_tabController.activeTabIndex);
       _saveTabsPreference();
       // Atualiza o explorer se o arquivo foi salvo na pasta do projeto
       if (_projectPath != null) await _loadProjectFiles(_projectPath!);
@@ -952,7 +802,7 @@ class _EditorScreenState extends State<EditorScreen> {
       if (!mounted) return;
       if (_currentSave != null) return;
 
-      final tabIndex = _openTabs.indexOf(tab);
+      final tabIndex = _tabController.openTabs.indexOf(tab);
       if (tabIndex != -1 && tab.hasUnsavedChanges && tab.path != null) {
         final path = tab.path!;
         final controller = tab.controller;
@@ -963,8 +813,7 @@ class _EditorScreenState extends State<EditorScreen> {
         try {
           await future;
           if (!mounted) return;
-          tab.hasUnsavedChanges = false;
-          tab.initialContent = controller.text;
+          _tabController.markTabSaved(tabIndex);
         } catch (e) {
           debugPrint('Auto-save error: $e');
         } finally {
@@ -990,8 +839,10 @@ class _EditorScreenState extends State<EditorScreen> {
       try {
         await future;
         if (!mounted) return;
-        tab.hasUnsavedChanges = false;
-        tab.initialContent = controller.text;
+        final tabIndex = _tabController.openTabs.indexOf(tab);
+        if (tabIndex != -1) {
+          _tabController.markTabSaved(tabIndex);
+        }
       } catch (e) {
         debugPrint('Instant save error: $e');
       } finally {
@@ -1009,9 +860,8 @@ class _EditorScreenState extends State<EditorScreen> {
     _showToast(_autoSaveEnabled ? 'Auto-Save ativado' : 'Auto-Save desativado');
   }
 
-  // Insere snippet no cursor com auto-indentação
   void _insertSnippet(String snippet) {
-    if (_activeTabIndex == -1) return;
+    if (_tabController.activeTabIndex == -1) return;
     final text = _activeController!.text;
     final sel = _activeController!.selection;
 
@@ -1062,7 +912,7 @@ class _EditorScreenState extends State<EditorScreen> {
       return;
     }
 
-    if (_activeTabIndex == -1) return;
+    if (_tabController.activeTabIndex == -1) return;
 
     if (key == 'Ctrl') {
       setState(() => _ctrlActive = !_ctrlActive);
@@ -1080,7 +930,7 @@ class _EditorScreenState extends State<EditorScreen> {
   bool get _isTerminalActive =>
       _isTerminalVisible &&
       _activeTerminalState != null &&
-      (_activeTabIndex == -1 || !_activeFocusNode!.hasFocus);
+      (_tabController.activeTabIndex == -1 || !_activeFocusNode!.hasFocus);
 
   void _handleTerminalKey(String key) {
     if (key == 'Ctrl') {
@@ -1092,11 +942,11 @@ class _EditorScreenState extends State<EditorScreen> {
       setState(() => _ctrlActive = false);
       if (key.startsWith('Z')) {
         _activeTerminalState!.sendInput('\x1a');
-      } else if (key.startsWith('Y'))
+      } else if (key.startsWith('Y')) {
         _activeTerminalState!.sendInput('\x19');
-      else if (key.startsWith('A'))
+      } else if (key.startsWith('A')) {
         _activeTerminalState!.sendInput('\x01');
-      else if (key.startsWith('C')) {
+      } else if (key.startsWith('C')) {
         _activeTerminalState!.sendInput('\x03');
         _showToast('Ctrl+C enviado');
       } else if (key.startsWith('V')) {
@@ -1437,13 +1287,13 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   void _formatCode({bool silent = false}) {
-    if (_activeTabIndex == -1) return;
+    if (_tabController.activeTabIndex == -1) return;
 
     final controller = _activeController!;
     final text = controller.text;
     if (text.isEmpty) return;
 
-    final lang = _openTabs[_activeTabIndex].languageName;
+    final lang = _tabController.languageName;
 
     try {
       final formatted = CodeFormatter.format(text, lang);
@@ -1578,7 +1428,7 @@ class _EditorScreenState extends State<EditorScreen> {
         _activePath != null &&
         (_activePath == path || (isDir && _activePath!.startsWith('$path/')));
 
-    if (affectedCurrentFile && _activeHasUnsavedChanges) {
+    if (affectedCurrentFile && _tabController.hasUnsavedChanges) {
       _showToast('Salve ou feche a aba antes de excluir este item');
       return;
     }
@@ -1623,8 +1473,8 @@ class _EditorScreenState extends State<EditorScreen> {
         }
       }
 
-      if (affectedCurrentFile && _activeTabIndex != -1) {
-        _closeTab(_activeTabIndex);
+      if (affectedCurrentFile && _tabController.activeTabIndex != -1) {
+        _closeTab(_tabController.activeTabIndex);
       }
 
       final refreshPath = isRemote ? p.posix.dirname(path) : p.dirname(path);
@@ -1671,11 +1521,8 @@ class _EditorScreenState extends State<EditorScreen> {
         }
       }
 
-      if (!isDir && _activePath == path && _activeTabIndex != -1) {
-        setState(() {
-          _openTabs[_activeTabIndex].path = newPath;
-          _openTabs[_activeTabIndex].name = newName;
-        });
+      if (!isDir && _activePath == path && _tabController.activeTabIndex != -1) {
+        _tabController.updateTabPath(_tabController.activeTabIndex, newPath);
       }
 
       final refreshPath = isRemote ? p.posix.dirname(path) : p.dirname(path);
@@ -2067,34 +1914,8 @@ class _EditorScreenState extends State<EditorScreen> {
     }
   }
 
-  dynamic _langForPath(String? path) {
-    if (path == null) return javascript;
-    switch (p.extension(path).toLowerCase()) {
-      case '.json':
-        return json;
-      case '.py':
-      case '.pyw':
-        return python;
-      case '.html':
-      case '.htm':
-        return xml;
-      case '.css':
-        return css;
-      case '.dart':
-        return dart;
-      case '.cpp':
-      case '.hpp':
-      case '.cc':
-      case '.c':
-      case '.h':
-        return cpp;
-      case '.md':
-      case '.markdown':
-        return markdown;
-      default:
-        return javascript;
-    }
-  }
+  // _langForPath movido para EditorTabController.langForPath()
+
 
   @override
   Widget build(BuildContext context) {
@@ -2142,15 +1963,16 @@ class _EditorScreenState extends State<EditorScreen> {
                   );
                 },
               ),
-            if (_openTabs.isNotEmpty)
+            if (_tabController.hasTabs)
               EditorTabsBar(
-                tabs: _openTabs,
-                activeIndex: _activeTabIndex,
+                tabs: _tabController.openTabs,
+                activeIndex: _tabController.activeTabIndex,
                 onTabTap: (i) {
-                  if (_activeTabIndex != -1 && _activeTabIndex != i) {
-                    _instantSaveTab(_openTabs[_activeTabIndex]);
+                  final activeIdx = _tabController.activeTabIndex;
+                  if (activeIdx != -1 && activeIdx != i) {
+                    _instantSaveTab(_tabController.openTabs[activeIdx]);
                   }
-                  setState(() => _activeTabIndex = i);
+                  _tabController.setActiveTab(i);
                   _saveTabsPreference();
                 },
                 onCloseTab: _closeTab,
@@ -2192,12 +2014,13 @@ class _EditorScreenState extends State<EditorScreen> {
                 ],
               ),
             ),
-            if (_activeTabIndex != -1)
+            if (_tabController.activeTabIndex != -1)
               GhostSuggestionBar(
-                key: ValueKey('ghost_$_activeTabIndex'),
+                key: ValueKey('ghost_${_tabController.activeTabIndex}'),
                 controller: _activeController!,
-                languageName: _languageName,
+                languageName: _tabController.languageName,
                 enabled: _ghostSuggestionsEnabled,
+                aiService: _aiService,
               ),
             AuxKeyboard(
               auxKeys: _currentAuxKeys,
@@ -2300,11 +2123,11 @@ class _EditorScreenState extends State<EditorScreen> {
       ),
       actions: [
         IconButton(
-          onPressed: _activeTabIndex != -1 ? _runActiveFile : null,
+          onPressed: _tabController.activeTabIndex != -1 ? _runActiveFile : null,
           icon: Icon(
             Icons.play_arrow_rounded,
             size: 24,
-            color: _activeTabIndex != -1
+            color: _tabController.activeTabIndex != -1
                 ? const Color(0xFF50FA7B)
                 : _theme.textMuted,
           ),
@@ -2312,11 +2135,11 @@ class _EditorScreenState extends State<EditorScreen> {
         ),
 
         IconButton(
-          onPressed: _activeHasUnsavedChanges ? _saveFile : null,
+          onPressed: _tabController.hasUnsavedChanges ? _saveFile : null,
           icon: Icon(
             Icons.save_outlined,
             size: 20,
-            color: _activeHasUnsavedChanges ? _theme.accent : _theme.textMuted,
+            color: _tabController.hasUnsavedChanges ? _theme.accent : _theme.textMuted,
           ),
           tooltip: 'Salvar',
         ),
@@ -2331,11 +2154,11 @@ class _EditorScreenState extends State<EditorScreen> {
           tooltip: 'Sobre',
         ),
         IconButton(
-          onPressed: _activeTabIndex != -1 ? _openAIDialog : null,
+          onPressed: _tabController.activeTabIndex != -1 ? _openAIDialog : null,
           icon: Icon(
             Icons.lightbulb_outline,
             size: 20,
-            color: _activeTabIndex != -1 ? Colors.amber[600] : _theme.textMuted,
+            color: _tabController.activeTabIndex != -1 ? Colors.amber[600] : _theme.textMuted,
           ),
           tooltip: 'Assistente IA (Gemma)',
         ),
@@ -2346,7 +2169,7 @@ class _EditorScreenState extends State<EditorScreen> {
             side: BorderSide(color: _theme.border),
           ),
           onSelected: (v) async {
-            if (v == 'new') _createNewTab();
+            if (v == 'new') _tabController.createNewTab();
             if (v == 'save_as') await _saveFileAs();
             if (v == 'theme') _showThemeDialog();
             if (v == 'zoom_in') _updateFontSize(_fontSize + 2);
@@ -2467,34 +2290,12 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   void _closeTab(int index) {
-    final tab = _openTabs[index];
+    if (index < 0 || index >= _tabController.tabCount) return;
+    final tab = _tabController.openTabs[index];
     final bool hasUnsaved = tab.hasUnsavedChanges;
 
     void proceedClose() {
-      final controller = tab.controller;
-      final focusNode = tab.focusNode;
-
-      setState(() {
-        _openTabs.removeAt(index);
-        if (_activeTabIndex == index) {
-          if (_openTabs.isNotEmpty) {
-            _activeTabIndex = index > 0 ? index - 1 : 0;
-          } else {
-            _activeTabIndex = -1;
-          }
-        } else if (_activeTabIndex > index) {
-          _activeTabIndex--;
-        }
-      });
-
-      // Adia o dispose para o próximo ciclo de microtask
-      // Isso evita que o Flutter tente buildar o widget com um node já destruído
-      Future.microtask(() {
-        controller.dispose();
-        focusNode.dispose();
-      });
-
-      _saveTabsPreference();
+      _tabController.closeTab(index);
     }
 
     if (hasUnsaved) {
@@ -2627,14 +2428,15 @@ class _EditorScreenState extends State<EditorScreen> {
     showDialog(
       context: context,
       builder: (_) => AIDialog(
-        selectedCode: _activeTabIndex != -1 ? _activeController!.text : null,
+        aiService: _aiService,
+        selectedCode: _tabController.activeTabIndex != -1 ? _activeController!.text : null,
         language: _getLanguageForCurrentFile(),
       ),
     );
   }
 
   void _showAISettingsDialog() {
-    showDialog(context: context, builder: (_) => const AISettingsDialog());
+    showDialog(context: context, builder: (_) => AISettingsDialog(aiService: _aiService));
   }
 
   String? _getLanguageForCurrentFile() {
@@ -2670,7 +2472,7 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   Widget _buildEditor() {
-    if (_activeTabIndex == -1) {
+    if (_tabController.activeTabIndex == -1) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -2754,7 +2556,7 @@ class _EditorScreenState extends State<EditorScreen> {
             },
           ),
           child: CodeField(
-            key: ValueKey(_activeTabIndex),
+            key: ValueKey(_tabController.activeTabIndex),
             controller: _activeController!,
             focusNode: _activeFocusNode!,
             expands: true,

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_code_editor/flutter_code_editor.dart';
 import '../services/ai_service.dart';
+import '../theme/jalide_theme.dart';
 
 /// Barra de sugestão ghost — aparece acima do teclado auxiliar
 /// quando a IA gera uma sugestão para o contexto atual do código.
@@ -9,12 +10,14 @@ class GhostSuggestionBar extends StatefulWidget {
   final CodeController controller;
   final String languageName;
   final bool enabled;
+  final AIService aiService;
 
   const GhostSuggestionBar({
     super.key,
     required this.controller,
     required this.languageName,
     this.enabled = true,
+    required this.aiService,
   });
 
   @override
@@ -23,7 +26,7 @@ class GhostSuggestionBar extends StatefulWidget {
 
 class _GhostSuggestionBarState extends State<GhostSuggestionBar>
     with SingleTickerProviderStateMixin {
-  final AIService _ai = AIService();
+  AIService get _ai => widget.aiService;
   Timer? _debounce;
   String _suggestion = '';
   bool _isLoading = false;
@@ -168,16 +171,16 @@ Responda APENAS com o texto que deve ser inserido após o cursor. Se não souber
 
   @override
   Widget build(BuildContext context) {
+    final theme = ThemeProvider.of(context).current;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // Esconde a barra quando não há nada a mostrar
     final bool showBar = _isLoading || _suggestion.isNotEmpty;
     if (!showBar) return const SizedBox.shrink();
 
-    final bg = isDark ? const Color(0xFF1E1E2E) : const Color(0xFFF0F0F8);
-    final border = isDark ? const Color(0xFF3A3A5C) : const Color(0xFFCCCCDD);
-    final textColor = isDark ? const Color(0xFF8888BB) : const Color(0xFF6666AA);
-    final accentColor = isDark ? const Color(0xFF7C83FD) : const Color(0xFF5057D5);
+    final bg = theme.surface;
+    final border = theme.border;
+    final textColor = theme.textMuted;
+    final accentColor = theme.accent;
 
     return FadeTransition(
       opacity: _isLoading ? const AlwaysStoppedAnimation(1.0) : _fadeAnim,
@@ -265,7 +268,7 @@ Responda APENAS com o texto que deve ser inserido após o cursor. Se não souber
           // Botão Descartar
           _SuggestionButton(
             label: '✕',
-            color: isDark ? const Color(0xFF555577) : const Color(0xFF9999AA),
+            color: accentColor.withValues(alpha: 0.5),
             onTap: _clearSuggestion,
           ),
           const SizedBox(width: 4),

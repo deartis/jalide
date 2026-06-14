@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
 import '../services/ai_service.dart';
+import '../theme/jalide_theme.dart';
 
 class AISettingsDialog extends StatefulWidget {
-  const AISettingsDialog({super.key});
+  final AIService aiService;
+
+  const AISettingsDialog({super.key, required this.aiService});
 
   @override
   State<AISettingsDialog> createState() => _AISettingsDialogState();
 }
 
 class _AISettingsDialogState extends State<AISettingsDialog> {
-  final _aiService = AIService();
+  AIService get _aiService => widget.aiService;
   final _apiKeyController = TextEditingController();
   bool _hasApiKey = false;
   bool _isLoading = false;
@@ -63,9 +66,7 @@ class _AISettingsDialogState extends State<AISettingsDialog> {
       });
       _apiKeyController.clear();
     } catch (e) {
-      // Mostra o erro real da API (expirada, cota, inválida, etc.)
       String errorMsg = e.toString();
-      // Simplifica mensagens comuns
       if (errorMsg.contains('API_KEY_INVALID') ||
           errorMsg.contains('invalid_argument')) {
         errorMsg = '❌ Chave inválida. Verifique se copiou corretamente.';
@@ -101,10 +102,11 @@ class _AISettingsDialogState extends State<AISettingsDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final theme = ThemeProvider.of(context).current;
 
     return AlertDialog(
-      title: const Text('Configuração do Gemma'),
+      backgroundColor: theme.bg,
+      title: Text('Configuração do Gemma', style: TextStyle(color: theme.textPri)),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -113,17 +115,17 @@ class _AISettingsDialogState extends State<AISettingsDialog> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.green[50],
-                  border: Border.all(color: Colors.green),
+                  color: theme.accent.withValues(alpha: 0.1),
+                  border: Border.all(color: theme.accent),
                   borderRadius: BorderRadius.circular(4),
                 ),
-                child: const Row(
+                child: Row(
                   children: [
-                    Icon(Icons.check_circle, color: Colors.green),
-                    SizedBox(width: 8),
+                    Icon(Icons.check_circle, color: theme.accent, size: 18),
+                    const SizedBox(width: 8),
                     Text(
                       'Chave configurada ✅',
-                      style: TextStyle(color: Colors.green),
+                      style: TextStyle(color: theme.accent, fontSize: 12),
                     ),
                   ],
                 ),
@@ -132,37 +134,40 @@ class _AISettingsDialogState extends State<AISettingsDialog> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.orange[50],
-                  border: Border.all(color: Colors.orange),
+                  color: theme.accent.withValues(alpha: 0.1),
+                  border: Border.all(color: theme.accent),
                   borderRadius: BorderRadius.circular(4),
                 ),
-                child: const Row(
+                child: Row(
                   children: [
-                    Icon(Icons.warning, color: Colors.orange),
-                    SizedBox(width: 8),
+                    Icon(Icons.warning, color: theme.accent, size: 18),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         'Chave não configurada',
-                        style: TextStyle(color: Colors.orange),
+                        style: TextStyle(color: theme.accent, fontSize: 12),
                       ),
                     ),
                   ],
                 ),
               ),
             const SizedBox(height: 16),
-            // Seletor de Modelo
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   '🤖 Modelo de IA',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    color: theme.textPri,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
                   initialValue: _selectedModel,
                   decoration: InputDecoration(
-                    prefixIcon: const Icon(Icons.auto_awesome),
+                    prefixIcon: Icon(Icons.auto_awesome, color: theme.accent),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
@@ -177,7 +182,7 @@ class _AISettingsDialogState extends State<AISettingsDialog> {
                           value: m['id'],
                           child: Text(
                             m['label']!,
-                            style: const TextStyle(fontSize: 13),
+                            style: TextStyle(fontSize: 13, color: theme.textPri),
                           ),
                         ),
                       )
@@ -190,13 +195,27 @@ class _AISettingsDialogState extends State<AISettingsDialog> {
             TextField(
               controller: _apiKeyController,
               obscureText: true,
+              style: TextStyle(color: theme.textPri),
               decoration: InputDecoration(
                 labelText: 'Google Generative AI Key',
+                labelStyle: TextStyle(color: theme.textMuted),
                 hintText: 'Cole sua chave aqui',
-                prefixIcon: const Icon(Icons.vpn_key),
+                hintStyle: TextStyle(color: theme.textMuted),
+                prefixIcon: Icon(Icons.vpn_key, color: theme.accent),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: theme.border),
                 ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: theme.border),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: theme.accent),
+                ),
+                filled: true,
+                fillColor: theme.surface,
               ),
               maxLines: 1,
             ),
@@ -206,7 +225,7 @@ class _AISettingsDialogState extends State<AISettingsDialog> {
                 padding: const EdgeInsets.only(bottom: 12),
                 child: Text(
                   _message,
-                  style: const TextStyle(fontSize: 12),
+                  style: TextStyle(fontSize: 12, color: theme.textPri),
                   textAlign: TextAlign.center,
                 ),
               ),
@@ -224,7 +243,7 @@ class _AISettingsDialogState extends State<AISettingsDialog> {
                   ElevatedButton.icon(
                     onPressed: _removeApiKey,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red,
+                      backgroundColor: Colors.redAccent,
                     ),
                     icon: const Icon(Icons.delete),
                     label: const Text('Remover'),
@@ -235,24 +254,27 @@ class _AISettingsDialogState extends State<AISettingsDialog> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: isDark ? Colors.grey[800] : Colors.grey[100],
+                color: theme.surface,
                 borderRadius: BorderRadius.circular(4),
               ),
-              child: const Column(
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     'ℹ️ Onde conseguir a chave?',
-                    style: TextStyle(fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: theme.textPri,
+                    ),
                   ),
-                  SizedBox(height: 8),
+                  const SizedBox(height: 8),
                   Text(
                     '1. Acesse ai.google.dev\n'
                     '2. Faça login com sua conta Google\n'
                     '3. Clique em "Get API Key"\n'
                     '4. Cole a chave aqui\n\n'
                     '💚 Tier grátis: 60 req/minuto',
-                    style: TextStyle(fontSize: 11),
+                    style: TextStyle(fontSize: 11, color: theme.textMuted),
                   ),
                 ],
               ),
@@ -263,7 +285,7 @@ class _AISettingsDialogState extends State<AISettingsDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Fechar'),
+          child: Text('Fechar', style: TextStyle(color: theme.accent)),
         ),
       ],
     );

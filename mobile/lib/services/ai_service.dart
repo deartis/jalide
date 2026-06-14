@@ -24,14 +24,7 @@ class AIService {
   );
   bool _isInitialized = false;
 
-  // Singleton
-  static final AIService _instance = AIService._internal();
-
-  AIService._internal();
-
-  factory AIService() {
-    return _instance;
-  }
+  AIService();
 
   Future<String?> _readKey() async {
     try {

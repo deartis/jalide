@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
 import '../services/ai_service.dart';
+import '../theme/jalide_theme.dart';
 import 'ai_settings_dialog.dart';
 
 class AIDialog extends StatefulWidget {
   final String? selectedCode;
   final String? language;
+  final AIService aiService;
 
   const AIDialog({
     super.key,
     this.selectedCode,
     this.language,
+    required this.aiService,
   });
 
   @override
@@ -17,7 +20,7 @@ class AIDialog extends StatefulWidget {
 }
 
 class _AIDialogState extends State<AIDialog> {
-  final _aiService = AIService();
+  AIService get _aiService => widget.aiService;
   final _promptController = TextEditingController();
   String _response = '';
   bool _isLoading = false;
@@ -75,14 +78,14 @@ class _AIDialogState extends State<AIDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final theme = ThemeProvider.of(context).current;
 
     return Dialog(
       child: Container(
         width: MediaQuery.of(context).size.width * 0.9,
         height: MediaQuery.of(context).size.height * 0.8,
         decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+          color: theme.bg,
           borderRadius: BorderRadius.circular(8),
         ),
         child: Column(
@@ -91,7 +94,7 @@ class _AIDialogState extends State<AIDialog> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF252526) : Colors.grey[100],
+                color: theme.surface,
                 borderRadius: const BorderRadius.only(
                   topLeft: Radius.circular(8),
                   topRight: Radius.circular(8),
@@ -104,14 +107,15 @@ class _AIDialogState extends State<AIDialog> {
                     children: [
                       Icon(
                         Icons.lightbulb_outline,
-                        color: Colors.amber[600],
+                        color: theme.accent,
                       ),
                       const SizedBox(width: 8),
-                      const Text(
+                      Text(
                         'Assistente Gemma',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
+                          color: theme.textPri,
                         ),
                       ),
                     ],
@@ -119,17 +123,17 @@ class _AIDialogState extends State<AIDialog> {
                   Row(
                     children: [
                       IconButton(
-                        icon: const Icon(Icons.settings),
+                        icon: Icon(Icons.settings, color: theme.textMuted),
                         tooltip: 'Configurações de IA',
                         onPressed: () {
                           showDialog(
                             context: context,
-                            builder: (_) => const AISettingsDialog(),
+                            builder: (_) => AISettingsDialog(aiService: widget.aiService),
                           );
                         },
                       ),
                       IconButton(
-                        icon: const Icon(Icons.close),
+                        icon: Icon(Icons.close, color: theme.textMuted),
                         onPressed: () => Navigator.pop(context),
                       ),
                     ],
@@ -141,9 +145,7 @@ class _AIDialogState extends State<AIDialog> {
             Container(
               decoration: BoxDecoration(
                 border: Border(
-                  bottom: BorderSide(
-                    color: isDark ? Colors.grey[700]! : Colors.grey[300]!,
-                  ),
+                  bottom: BorderSide(color: theme.border),
                 ),
               ),
               child: SingleChildScrollView(
@@ -170,7 +172,7 @@ class _AIDialogState extends State<AIDialog> {
                           padding: const EdgeInsets.all(8),
                           child: Text(
                             'Prompt',
-                            style: Theme.of(context).textTheme.labelSmall,
+                            style: TextStyle(color: theme.textMuted, fontSize: 11),
                           ),
                         ),
                         Expanded(
@@ -182,13 +184,12 @@ class _AIDialogState extends State<AIDialog> {
                               border: InputBorder.none,
                               contentPadding: const EdgeInsets.all(12),
                               filled: true,
-                              fillColor: isDark
-                                  ? const Color(0xFF1E1E1E)
-                                  : Colors.grey[50],
+                              fillColor: theme.surface,
                             ),
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontFamily: 'Monaco',
                               fontSize: 12,
+                              color: theme.textPri,
                             ),
                           ),
                         ),
@@ -218,7 +219,7 @@ class _AIDialogState extends State<AIDialog> {
                   ),
                   Container(
                     width: 1,
-                    color: isDark ? Colors.grey[700] : Colors.grey[300],
+                    color: theme.border,
                   ),
                   // Output
                   Expanded(
@@ -228,7 +229,7 @@ class _AIDialogState extends State<AIDialog> {
                           padding: const EdgeInsets.all(8),
                           child: Text(
                             'Resposta',
-                            style: Theme.of(context).textTheme.labelSmall,
+                            style: TextStyle(color: theme.textMuted, fontSize: 11),
                           ),
                         ),
                         Expanded(
@@ -241,8 +242,8 @@ class _AIDialogState extends State<AIDialog> {
                               style: TextStyle(
                                 fontSize: 12,
                                 color: _response.isEmpty
-                                    ? Colors.grey[500]
-                                    : null,
+                                    ? theme.textMuted
+                                    : theme.textPri,
                               ),
                             ),
                           ),
@@ -261,6 +262,7 @@ class _AIDialogState extends State<AIDialog> {
 
   Widget _buildTab(String label, int index) {
     final isActive = _selectedTab == index;
+    final theme = ThemeProvider.of(context).current;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -270,7 +272,7 @@ class _AIDialogState extends State<AIDialog> {
           decoration: BoxDecoration(
             border: Border(
               bottom: BorderSide(
-                color: isActive ? Colors.blue : Colors.transparent,
+                color: isActive ? theme.accent : Colors.transparent,
                 width: isActive ? 2 : 0,
               ),
             ),
@@ -279,7 +281,7 @@ class _AIDialogState extends State<AIDialog> {
             label,
             style: TextStyle(
               fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-              color: isActive ? Colors.blue : Colors.grey[600],
+              color: isActive ? theme.accent : theme.textMuted,
             ),
           ),
         ),

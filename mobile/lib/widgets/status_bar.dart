@@ -25,31 +25,31 @@ class StatusBar extends StatelessWidget {
         children: [
           GestureDetector(
             onTap: onTerminalToggle,
-            child: _sbChip('⬡ Terminal'),
+            child: _sbChip(theme, '⬡ Terminal'),
           ),
           const SizedBox(width: 12),
           GestureDetector(
             onTap: onLanguageTap,
             behavior: HitTestBehavior.opaque,
-            child: _sbChip(languageName),
+            child: _sbChip(theme, languageName),
           ),
           const SizedBox(width: 12),
-          _sbChip('UTF-8'),
+          _sbChip(theme, 'UTF-8'),
           const Spacer(),
           if (hasUnsavedChanges)
-            const Text(
+            Text(
               '●',
-              style: TextStyle(color: Color(0xFF1A0A00), fontSize: 10),
+              style: TextStyle(color: theme.bg, fontSize: 10),
             ),
         ],
       ),
     );
   }
 
-  Widget _sbChip(String text) => Text(
+  Widget _sbChip(JalideThemeVariant theme, String text) => Text(
     text,
-    style: const TextStyle(
-      color: Color(0xFF1A0A00),
+    style: TextStyle(
+      color: theme.bg,
       fontFamily: 'monospace',
       fontSize: 10,
       fontWeight: FontWeight.bold,
