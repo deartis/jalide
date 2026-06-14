@@ -27,15 +27,18 @@ class SshProfile {
     this.privateKeyPem,
   });
 
-  Map<String, String> toMap() => {
-    'id': id,
-    'label': label,
-    'host': host,
-    'port': port.toString(),
-    'username': username,
-    'password': ?password,
-    'privateKeyPem': ?privateKeyPem,
-  };
+  Map<String, String> toMap() {
+    final m = {
+      'id': id,
+      'label': label,
+      'host': host,
+      'port': port.toString(),
+      'username': username,
+    };
+    if (password != null) m['password'] = password!;
+    if (privateKeyPem != null) m['privateKeyPem'] = privateKeyPem!;
+    return m;
+  }
 
   factory SshProfile.fromMap(Map<String, String> m) => SshProfile(
     id: m['id']!,
@@ -86,6 +89,9 @@ class SshSession {
   SshSession({required this.profile}) : state = SshConnectionState.disconnected;
 
   bool get isConnected => state == SshConnectionState.connected;
+
+  /// Acesso ao cliente SSH (para operações como heartbeat)
+  SSHClient? get client => _client;
 
   /// Stream de saída do shell remoto → xterm
   Stream<Uint8List>? get outputStream => _outputController?.stream;

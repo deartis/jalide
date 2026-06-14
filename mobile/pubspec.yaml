@@ -26,6 +26,8 @@ dependencies:
   flutter_secure_storage: ^9.0.0
   # Requisições HTTP (para buscar chave PIX remota)
   http: ^1.2.1
+  # Google Generative AI (Gemma)
+  google_generative_ai: ^0.4.0
 
 dev_dependencies:
   flutter_test:

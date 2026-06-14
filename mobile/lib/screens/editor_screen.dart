@@ -22,15 +22,22 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/file_service.dart';
+import '../services/ai_service.dart';
+import '../services/ssh_connection_manager.dart';
 //import '../services/ssh_service.dart';
 import '../theme/jalide_theme.dart';
 import '../utils/code_completion.dart';
 import '../widgets/aux_keyboard.dart';
+import '../widgets/ghost_suggestion_bar.dart';
 import '../widgets/terminal_panel.dart';
 import '../widgets/status_bar.dart';
 import '../widgets/file_explorer.dart';
 import '../widgets/editor_tabs_bar.dart';
+import '../widgets/ai_dialog.dart';
+import '../widgets/ai_settings_dialog.dart';
+import '../widgets/ssh_connection_status_widget.dart';
 import '../utils/file_utils.dart';
+import '../utils/code_formatter.dart';
 import 'ssh_connect_screen.dart';
 
 class EditorScreen extends StatefulWidget {
@@ -86,9 +93,11 @@ class _EditorScreenState extends State<EditorScreen> {
   TerminalMode _terminalMode = TerminalMode.local;
   SshSession? _activeSshSession;
   TerminalPanelState? _activeTerminalState;
+  DateTime? _lastEditorTouchDown;
   bool _isRemoteProject = false;
   bool _isSaving = false;
   final SshProfileManager _sshProfileManager = SshProfileManager();
+  late SshConnectionManager _sshConnectionManager;
 
   // Explorer de Projeto
   String? _projectPath;
@@ -97,6 +106,8 @@ class _EditorScreenState extends State<EditorScreen> {
   // Configurações
   double _fontSize = 14.0;
   bool _autoSaveEnabled = true;
+  bool _ghostSuggestionsEnabled = true;
+  bool _autoFormatOnSave = false;
   Timer? _autoSaveTimer;
 
   // Teclado auxiliar
@@ -136,9 +147,47 @@ class _EditorScreenState extends State<EditorScreen> {
   void initState() {
     super.initState();
     _sshProfileManager.load();
+    _sshConnectionManager = SshConnectionManager(profileManager: _sshProfileManager);
+    _initializeAI();
+    _initializeSshConnectionManager();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadPreferences();
     });
+  }
+
+  Future<void> _initializeSshConnectionManager() async {
+    await _sshConnectionManager.initialize();
+    
+    // Tenta reconectar na última conexão bem-sucedida (opcional)
+    final lastProfile = await _sshConnectionManager.getLastSuccessfulProfile();
+    if (lastProfile != null && mounted) {
+      debugPrint('📱 Última conexão SSH encontrada: ${lastProfile.label}');
+    }
+  }
+
+  @override
+  void dispose() {
+    _sshConnectionManager.dispose();
+    _autoSaveTimer?.cancel();
+    for (final tab in _openTabs) {
+      (tab['controller'] as CodeController).dispose();
+      (tab['focusNode'] as FocusNode).dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _initializeAI() async {
+    try {
+      final aiService = AIService();
+      if (await aiService.hasApiKey()) {
+        await aiService.initialize();
+        debugPrint('✅ AIService inicializado com sucesso');
+      } else {
+        debugPrint('ℹ️ AIService não inicializado: Nenhuma chave salva');
+      }
+    } catch (e) {
+      debugPrint('❌ Erro ao inicializar AIService: $e');
+    }
   }
 
   Future<void> _loadPreferences() async {
@@ -146,8 +195,14 @@ class _EditorScreenState extends State<EditorScreen> {
 
     // Load Auto-Save Setting
     final savedAutoSave = prefs.getBool('autosave_enabled') ?? true;
+    final savedGhost = prefs.getBool('ghost_suggestions_enabled') ?? true;
+    final savedAutoFormat = prefs.getBool('autoformat_on_save') ?? false;
     if (mounted) {
-      setState(() => _autoSaveEnabled = savedAutoSave);
+      setState(() {
+        _autoSaveEnabled = savedAutoSave;
+        _ghostSuggestionsEnabled = savedGhost;
+        _autoFormatOnSave = savedAutoFormat;
+      });
     }
 
     // Load Font Size
@@ -356,15 +411,6 @@ class _EditorScreenState extends State<EditorScreen> {
     } catch (e) {
       _showToast('Erro ao listar arquivos remotos: $e', type: _ToastType.error);
     }
-  }
-
-  @override
-  void dispose() {
-    for (final tab in _openTabs) {
-      (tab['controller'] as CodeController).dispose();
-      (tab['focusNode'] as FocusNode).dispose();
-    }
-    super.dispose();
   }
 
   CodeController _createController(
@@ -762,6 +808,10 @@ class _EditorScreenState extends State<EditorScreen> {
       return;
     }
 
+    if (_autoFormatOnSave) {
+      _formatCode(silent: true);
+    }
+
     setState(() => _isSaving = true);
     try {
       debugPrint('JALIDE_ATTEMPT_SAVE: $_activePath');
@@ -843,6 +893,10 @@ class _EditorScreenState extends State<EditorScreen> {
     if (confirmedName == null || confirmedName.trim().isEmpty) {
       _showToast('Cancelado');
       return;
+    }
+
+    if (_autoFormatOnSave) {
+      _formatCode(silent: true);
     }
 
     // Resolve o diretório de destino:
@@ -1035,111 +1089,92 @@ class _EditorScreenState extends State<EditorScreen> {
         (_activeTabIndex == -1 || !_activeFocusNode.hasFocus);
 
     if (isTerminalActive) {
+      // Ctrl é disparado antes da tecla pelo teclado — rastreia o estado
       if (key == 'Ctrl') {
-        setState(() {
-          _ctrlActive = !_ctrlActive;
-        });
+        setState(() => _ctrlActive = !_ctrlActive);
         return;
       }
 
       if (_ctrlActive) {
-        setState(() {
-          _ctrlActive = false;
-        });
-
-        if (key.startsWith('Z')) {
-          _activeTerminalState!.sendInput("\x1a");
-        } else if (key.startsWith('Y')) {
-          _activeTerminalState!.sendInput("\x19");
-        } else if (key.startsWith('A')) {
-          _activeTerminalState!.sendInput("\x01");
-        } else if (key.startsWith('C')) {
-          _activeTerminalState!.sendInput("\x03");
+        setState(() => _ctrlActive = false);
+        if (key.startsWith('Z')) _activeTerminalState!.sendInput('\x1a');
+        else if (key.startsWith('Y')) _activeTerminalState!.sendInput('\x19');
+        else if (key.startsWith('A')) _activeTerminalState!.sendInput('\x01');
+        else if (key.startsWith('C')) {
+          _activeTerminalState!.sendInput('\x03');
           _showToast('Ctrl+C enviado');
         } else if (key.startsWith('V')) {
           Clipboard.getData(Clipboard.kTextPlain).then((data) {
-            if (data != null && data.text != null) {
-              _activeTerminalState!.sendInput(data.text!);
-            }
+            if (data?.text != null) _activeTerminalState!.sendInput(data!.text!);
           });
         } else if (key.startsWith('X')) {
-          _activeTerminalState!.sendInput("\x18");
+          _activeTerminalState!.sendInput('\x18');
+        } else if (key.startsWith('S')) {
+          _activeTerminalState!.sendInput('\x13');
         }
         return;
       }
 
-      if (key == 'Tab') {
-        _activeTerminalState!.sendInput("\t");
-      } else if (key == '←') {
-        _activeTerminalState!.sendInput("\x1b[D");
-      } else if (key == '→') {
-        _activeTerminalState!.sendInput("\x1b[C");
-      } else if (key == '↑') {
-        _activeTerminalState!.sendInput("\x1b[A");
-      } else if (key == '↓') {
-        _activeTerminalState!.sendInput("\x1b[B");
-      } else {
-        _activeTerminalState!.sendInput(key.replaceAll(' ', ''));
+      // Teclas de navegação e especiais no terminal
+      switch (key) {
+        case 'Tab': _activeTerminalState!.sendInput('\t'); break;
+        case '←': _activeTerminalState!.sendInput('\x1b[D'); break;
+        case '→': _activeTerminalState!.sendInput('\x1b[C'); break;
+        case '↑': _activeTerminalState!.sendInput('\x1b[A'); break;
+        case '↓': _activeTerminalState!.sendInput('\x1b[B'); break;
+        case 'BACKSPACE': _activeTerminalState!.sendInput('\x7f'); break;
+        case 'ESC': _activeTerminalState!.sendInput('\x1b'); break;
+        case 'HOME': _activeTerminalState!.sendInput('\x1b[H'); break;
+        case 'END': _activeTerminalState!.sendInput('\x1b[F'); break;
+        case 'ENTER': _activeTerminalState!.sendInput('\n'); break;
+        default: _activeTerminalState!.sendInput(key.replaceAll(' ', ''));
       }
       return;
     }
 
     if (_activeTabIndex == -1) return;
 
+    // Ctrl sequência: o widget manda 'Ctrl' + tecla em sequência
     if (key == 'Ctrl') {
-      setState(() {
-        _ctrlActive = !_ctrlActive;
-      });
+      setState(() => _ctrlActive = !_ctrlActive);
       return;
     }
 
     if (_ctrlActive) {
-      setState(() {
-        _ctrlActive = false;
-      });
+      setState(() => _ctrlActive = false);
 
       if (key.startsWith('Z')) {
-        try {
-          (_activeController as dynamic).undo();
-        } catch (_) {
-          Actions.maybeInvoke<UndoTextIntent>(
-            context,
-            const UndoTextIntent(SelectionChangedCause.keyboard),
-          );
+        try { (_activeController as dynamic).undo(); } catch (_) {
+          Actions.maybeInvoke<UndoTextIntent>(context,
+              const UndoTextIntent(SelectionChangedCause.keyboard));
         }
       } else if (key.startsWith('Y')) {
-        try {
-          (_activeController as dynamic).redo();
-        } catch (_) {
-          Actions.maybeInvoke<RedoTextIntent>(
-            context,
-            const RedoTextIntent(SelectionChangedCause.keyboard),
-          );
+        try { (_activeController as dynamic).redo(); } catch (_) {
+          Actions.maybeInvoke<RedoTextIntent>(context,
+              const RedoTextIntent(SelectionChangedCause.keyboard));
         }
       } else if (key.startsWith('A')) {
         _activeController.selection = TextSelection(
-          baseOffset: 0,
-          extentOffset: _activeController.text.length,
-        );
+            baseOffset: 0, extentOffset: _activeController.text.length);
       } else if (key.startsWith('C')) {
         final sel = _activeController.selection;
         if (sel.isValid && !sel.isCollapsed) {
           Clipboard.setData(ClipboardData(
-            text: _activeController.text.substring(sel.start, sel.end),
-          ));
-          _showToast('Copiado para a área de transferência');
+              text: _activeController.text.substring(sel.start, sel.end)));
+          _showToast('Copiado');
         }
       } else if (key.startsWith('V')) {
         Clipboard.getData(Clipboard.kTextPlain).then((data) {
-          if (data != null && data.text != null) {
+          if (data?.text != null) {
             final text = _activeController.text;
             final sel = _activeController.selection;
             if (sel.isValid) {
-              final before = text.substring(0, sel.start);
-              final after = text.substring(sel.end);
-              _activeController.text = before + data.text! + after;
-              _activeController.selection = TextSelection.collapsed(
-                offset: sel.start + data.text!.length,
+              _activeController.value = _activeController.value.copyWith(
+                text: text.substring(0, sel.start) +
+                    data!.text! +
+                    text.substring(sel.end),
+                selection: TextSelection.collapsed(
+                    offset: sel.start + data.text!.length),
               );
             }
           }
@@ -1148,82 +1183,247 @@ class _EditorScreenState extends State<EditorScreen> {
         final sel = _activeController.selection;
         if (sel.isValid && !sel.isCollapsed) {
           final text = _activeController.text;
-          final selectedText = text.substring(sel.start, sel.end);
-          Clipboard.setData(ClipboardData(text: selectedText));
-          final before = text.substring(0, sel.start);
-          final after = text.substring(sel.end);
-          _activeController.text = before + after;
-          _activeController.selection = TextSelection.collapsed(offset: sel.start);
+          Clipboard.setData(ClipboardData(
+              text: text.substring(sel.start, sel.end)));
+          _activeController.value = _activeController.value.copyWith(
+            text: text.substring(0, sel.start) + text.substring(sel.end),
+            selection: TextSelection.collapsed(offset: sel.start),
+          );
           _showToast('Recortado');
         }
+      } else if (key.startsWith('S')) {
+        _saveFile();
+      } else if (key.startsWith('D')) {
+        // Duplica a linha atual
+        final text = _activeController.text;
+        final sel = _activeController.selection;
+        if (sel.isValid) {
+          final before = text.substring(0, sel.start);
+          final lines = before.split('\n');
+          final currentLine = lines.last;
+          final lineStart = before.length - currentLine.length;
+          final lineEnd = text.indexOf('\n', lineStart);
+          final end = lineEnd == -1 ? text.length : lineEnd;
+          final line = text.substring(lineStart, end);
+          final newText =
+              text.substring(0, end) + '\n' + line + text.substring(end);
+          _activeController.value = _activeController.value.copyWith(
+            text: newText,
+            selection: TextSelection.collapsed(offset: end + 1 + line.length),
+          );
+        }
+      } else if (key.startsWith('F')) {
+        _formatCode();
       }
       _activeFocusNode.requestFocus();
       return;
     }
 
-    if (key == 'Tab') {
-      _insertSnippet('  ');
-    } else if (key == '←') {
-      final sel = _activeController.selection;
-      if (sel.isValid && sel.start > 0) {
-        _activeController.selection = TextSelection.collapsed(
-          offset: sel.start - 1,
-        );
-      }
-    } else if (key == '→') {
-      final sel = _activeController.selection;
-      if (sel.isValid && sel.start < _activeController.text.length) {
-        _activeController.selection = TextSelection.collapsed(
-          offset: sel.start + 1,
-        );
-      }
-    } else if (key == '↑') {
-      final text = _activeController.text;
-      final sel = _activeController.selection;
-      if (sel.isValid) {
-        final currentOffset = sel.start;
-        final beforeText = text.substring(0, currentOffset);
-        final linesBefore = beforeText.split('\n');
-        if (linesBefore.length > 1) {
-          final currentLineText = linesBefore.last;
-          final currentColumn = currentLineText.length;
-          final previousLineText = linesBefore[linesBefore.length - 2];
-          final previousLineStart =
-              beforeText.length - currentColumn - 1 - previousLineText.length;
-          final targetColumn = currentColumn < previousLineText.length
-              ? currentColumn
-              : previousLineText.length;
-          _activeController.selection = TextSelection.collapsed(
-            offset: previousLineStart + targetColumn,
-          );
+    // Teclas normais do editor
+    switch (key) {
+      case 'Tab':
+        _insertSnippet('  ');
+        break;
+      case '←':
+        final selL = _activeController.selection;
+        if (selL.isValid && selL.start > 0) {
+          _activeController.selection =
+              TextSelection.collapsed(offset: selL.start - 1);
         }
-      }
-    } else if (key == '↓') {
-      final text = _activeController.text;
-      final sel = _activeController.selection;
-      if (sel.isValid) {
-        final currentOffset = sel.start;
-        final beforeText = text.substring(0, currentOffset);
-        final afterText = text.substring(currentOffset);
-        final linesBefore = beforeText.split('\n');
-        final currentLineText = linesBefore.isNotEmpty ? linesBefore.last : '';
-        final currentColumn = currentLineText.length;
-
-        final linesAfter = afterText.split('\n');
-        if (linesAfter.length > 1) {
-          final nextLineText = linesAfter[1];
-          final nextLineStart = beforeText.length + linesAfter[0].length + 1;
-          final targetColumn =
-              currentColumn < nextLineText.length ? currentColumn : nextLineText.length;
-          _activeController.selection = TextSelection.collapsed(
-            offset: nextLineStart + targetColumn,
-          );
+        break;
+      case '→':
+        final selR = _activeController.selection;
+        if (selR.isValid &&
+            selR.start < _activeController.text.length) {
+          _activeController.selection =
+              TextSelection.collapsed(offset: selR.start + 1);
         }
-      }
-    } else {
-      _insertSnippet(key);
+        break;
+      case '↑':
+        final text = _activeController.text;
+        final sel = _activeController.selection;
+        if (sel.isValid) {
+          final before = text.substring(0, sel.start);
+          final lines = before.split('\n');
+          if (lines.length > 1) {
+            final col = lines.last.length;
+            final prevLine = lines[lines.length - 2];
+            final prevStart =
+                before.length - col - 1 - prevLine.length;
+            _activeController.selection = TextSelection.collapsed(
+                offset: prevStart + col.clamp(0, prevLine.length));
+          }
+        }
+        break;
+      case '↓':
+        final textD = _activeController.text;
+        final selD = _activeController.selection;
+        if (selD.isValid) {
+          final before = textD.substring(0, selD.start);
+          final after = textD.substring(selD.start);
+          final col = before.split('\n').last.length;
+          final afterLines = after.split('\n');
+          if (afterLines.length > 1) {
+            final nextLine = afterLines[1];
+            final nextStart =
+                before.length + afterLines[0].length + 1;
+            _activeController.selection = TextSelection.collapsed(
+                offset: nextStart + col.clamp(0, nextLine.length));
+          }
+        }
+        break;
+      case 'BACKSPACE':
+        final selBs = _activeController.selection;
+        if (selBs.isValid) {
+          final text = _activeController.text;
+          if (!selBs.isCollapsed) {
+            _activeController.value = _activeController.value.copyWith(
+              text: text.substring(0, selBs.start) +
+                  text.substring(selBs.end),
+              selection:
+                  TextSelection.collapsed(offset: selBs.start),
+            );
+          } else if (selBs.start > 0) {
+            _activeController.value = _activeController.value.copyWith(
+              text: text.substring(0, selBs.start - 1) +
+                  text.substring(selBs.start),
+              selection:
+                  TextSelection.collapsed(offset: selBs.start - 1),
+            );
+          }
+        }
+        break;
+      case 'HOME':
+        final textH = _activeController.text;
+        final selH = _activeController.selection;
+        if (selH.isValid) {
+          final before = textH.substring(0, selH.start);
+          final lineStart = before.lastIndexOf('\n') + 1;
+          _activeController.selection =
+              TextSelection.collapsed(offset: lineStart);
+        }
+        break;
+      case 'END':
+        final textE = _activeController.text;
+        final selE = _activeController.selection;
+        if (selE.isValid) {
+          final after = textE.substring(selE.start);
+          final lineEnd = after.indexOf('\n');
+          final offset = lineEnd == -1
+              ? textE.length
+              : selE.start + lineEnd;
+          _activeController.selection =
+              TextSelection.collapsed(offset: offset);
+        }
+        break;
+      case 'ENTER':
+        _insertSnippet('\n');
+        break;
+      case 'SEL_UP':
+        final textSU = _activeController.text;
+        final selSU = _activeController.selection;
+        if (selSU.isValid) {
+          final before = textSU.substring(0, selSU.start);
+          final lines = before.split('\n');
+          if (lines.length > 1) {
+            final col = lines.last.length;
+            final prevLine = lines[lines.length - 2];
+            final prevStart =
+                before.length - col - 1 - prevLine.length;
+            _activeController.selection = TextSelection(
+              baseOffset: selSU.baseOffset,
+              extentOffset:
+                  prevStart + col.clamp(0, prevLine.length),
+            );
+          }
+        }
+        break;
+      case 'SEL_DOWN':
+        final textSD = _activeController.text;
+        final selSD = _activeController.selection;
+        if (selSD.isValid) {
+          final before = textSD.substring(0, selSD.extentOffset);
+          final after = textSD.substring(selSD.extentOffset);
+          final col = before.split('\n').last.length;
+          final afterLines = after.split('\n');
+          if (afterLines.length > 1) {
+            final nextLine = afterLines[1];
+            final nextStart =
+                before.length + afterLines[0].length + 1;
+            _activeController.selection = TextSelection(
+              baseOffset: selSD.baseOffset,
+              extentOffset:
+                  nextStart + col.clamp(0, nextLine.length),
+            );
+          }
+        }
+        break;
+      case 'ESC':
+        _activeFocusNode.unfocus();
+        break;
+      default:
+        _insertSnippet(key);
     }
     _activeFocusNode.requestFocus();
+  }
+
+  Future<void> _toggleGhostSuggestions() async {
+    final newValue = !_ghostSuggestionsEnabled;
+    setState(() => _ghostSuggestionsEnabled = newValue);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('ghost_suggestions_enabled', newValue);
+    _showToast(
+      newValue
+          ? '✨ Sugestões IA ativadas'
+          : '🚫 Sugestões IA desativadas',
+    );
+  }
+
+  void _formatCode({bool silent = false}) {
+    if (_activeTabIndex == -1) return;
+
+    final controller = _activeController;
+    final text = controller.text;
+    if (text.isEmpty) return;
+
+    final lang = _openTabs[_activeTabIndex]['languageName'] as String? ?? 'TEXT';
+
+    try {
+      final formatted = CodeFormatter.format(text, lang);
+      
+      if (formatted != text) {
+        final selection = controller.selection;
+        controller.value = controller.value.copyWith(
+          text: formatted,
+          selection: selection.isValid
+              ? TextSelection.collapsed(offset: selection.baseOffset.clamp(0, formatted.length))
+              : const TextSelection.collapsed(offset: -1),
+        );
+        if (!silent) {
+          _showToast('Código formatado com sucesso', type: _ToastType.success);
+        }
+      } else {
+        if (!silent) {
+          _showToast('O código já está formatado');
+        }
+      }
+    } catch (e) {
+      if (!silent) {
+        _showToast('Erro ao formatar: $e', type: _ToastType.error);
+      }
+    }
+  }
+
+  Future<void> _toggleAutoFormatOnSave() async {
+    final newValue = !_autoFormatOnSave;
+    setState(() => _autoFormatOnSave = newValue);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('autoformat_on_save', newValue);
+    _showToast(
+      newValue
+          ? '🧹 Auto-Format ao salvar ativado'
+          : '🚫 Auto-Format desativado',
+    );
   }
 
   void _showToast(
@@ -1808,6 +2008,18 @@ class _EditorScreenState extends State<EditorScreen> {
         ),
         body: Column(
           children: [
+            // Status da Conexão SSH
+            if (_activeSshSession != null && _isRemoteProject)
+              SshConnectionStatusWidget(
+                connectionManager: _sshConnectionManager,
+                onReconnect: () async {
+                  final success = await _sshConnectionManager.reconnectNow();
+                  if (!mounted) return;
+                  _showToast(
+                    success ? '✅ Reconectado!' : '❌ Erro ao reconectar',
+                  );
+                },
+              ),
             if (_openTabs.isNotEmpty)
               EditorTabsBar(
                 tabs: _openTabs,
@@ -1857,6 +2069,13 @@ class _EditorScreenState extends State<EditorScreen> {
                 ],
               ),
             ),
+            if (_activeTabIndex != -1)
+              GhostSuggestionBar(
+                key: ValueKey('ghost_$_activeTabIndex'),
+                controller: _activeController,
+                languageName: _languageName,
+                enabled: _ghostSuggestionsEnabled,
+              ),
             AuxKeyboard(
               auxKeys: _currentAuxKeys,
               ctrlActive: _ctrlActive,
@@ -1991,6 +2210,15 @@ class _EditorScreenState extends State<EditorScreen> {
           icon: const Icon(Icons.favorite, size: 20, color: Colors.redAccent),
           tooltip: 'Apoiar Projeto',
         ),
+        IconButton(
+          onPressed: _activeTabIndex != -1 ? _openAIDialog : null,
+          icon: Icon(
+            Icons.lightbulb_outline,
+            size: 20,
+            color: _activeTabIndex != -1 ? Colors.amber[600] : _theme.textMuted,
+          ),
+          tooltip: 'Assistente IA (Gemma)',
+        ),
         PopupMenuButton<String>(
           color: _theme.surface,
           shape: RoundedRectangleBorder(
@@ -2005,6 +2233,10 @@ class _EditorScreenState extends State<EditorScreen> {
             if (v == 'zoom_out') _updateFontSize(_fontSize - 2);
             if (v == 'ssh') _openSshScreen();
             if (v == 'autosave') _toggleAutoSave();
+            if (v == 'autoformat') _toggleAutoFormatOnSave();
+            if (v == 'format') _formatCode();
+            if (v == 'ghost') _toggleGhostSuggestions();
+            if (v == 'ai_settings') _showAISettingsDialog();
             if (v == 'exit') SystemNavigator.pop();
           },
           itemBuilder: (_) => [
@@ -2019,7 +2251,23 @@ class _EditorScreenState extends State<EditorScreen> {
               _autoSaveEnabled ? 'Auto-Save: [ON]' : 'Auto-Save: [OFF]',
               _autoSaveEnabled ? Icons.toggle_on_outlined : Icons.toggle_off_outlined,
             ),
+            _menuItem(
+              'autoformat',
+              _autoFormatOnSave ? 'Auto-Format: [ON]' : 'Auto-Format: [OFF]',
+              _autoFormatOnSave ? Icons.align_horizontal_left : Icons.align_horizontal_left_outlined,
+            ),
+            _menuItem('format', 'Formatar Código', Icons.format_align_left_outlined),
             const PopupMenuDivider(),
+            _menuItem('ai_settings', 'Config. Gemma IA', Icons.settings_outlined),
+            _menuItem(
+              'ghost',
+              _ghostSuggestionsEnabled
+                  ? 'Sugestões IA: [ON]'
+                  : 'Sugestões IA: [OFF]',
+              _ghostSuggestionsEnabled
+                  ? Icons.auto_awesome
+                  : Icons.auto_awesome_outlined,
+            ),
             _menuItem('ssh', 'SSH Remote', Icons.cloud_outlined),
             _menuItem('theme', 'Mudar Tema', Icons.palette_outlined),
             const PopupMenuDivider(),
@@ -2188,12 +2436,17 @@ class _EditorScreenState extends State<EditorScreen> {
           currentSession: _activeSshSession,
           onDisconnect: _disconnectSshSession,
           onConnected: (session) async {
+            // Usa o SshConnectionManager para gerenciar a conexão
             setState(() {
               _activeSshSession = session;
               _terminalMode = TerminalMode.ssh;
               _hasTerminalBeenOpened = true;
               _isTerminalVisible = true;
             });
+            
+            // Registra na sessão do gerenciador
+            _sshConnectionManager.setCurrentSession(session, session.profile);
+            
             // Ao conectar, pergunta se quer abrir a home remota
             final home = await session.getHomeDir();
             await _loadRemoteProjectFiles(home);
@@ -2205,6 +2458,55 @@ class _EditorScreenState extends State<EditorScreen> {
         ),
       ),
     );
+  }
+
+  void _openAIDialog() {
+    showDialog(
+      context: context,
+      builder: (_) => AIDialog(
+        selectedCode: _activeTabIndex != -1 ? _activeController.text : null,
+        language: _getLanguageForCurrentFile(),
+      ),
+    );
+  }
+
+  void _showAISettingsDialog() {
+    showDialog(
+      context: context,
+      builder: (_) => const AISettingsDialog(),
+    );
+  }
+
+  String? _getLanguageForCurrentFile() {
+    if (_activePath == null) return null;
+    final ext = p.extension(_activePath!).toLowerCase();
+    switch (ext) {
+      case '.dart':
+        return 'dart';
+      case '.py':
+        return 'python';
+      case '.js':
+        return 'javascript';
+      case '.ts':
+        return 'typescript';
+      case '.java':
+        return 'java';
+      case '.cpp':
+      case '.cc':
+        return 'cpp';
+      case '.c':
+        return 'c';
+      case '.json':
+        return 'json';
+      case '.xml':
+        return 'xml';
+      case '.html':
+        return 'html';
+      case '.css':
+        return 'css';
+      default:
+        return null;
+    }
   }
 
   Widget _buildEditor() {
@@ -2239,33 +2541,59 @@ class _EditorScreenState extends State<EditorScreen> {
     }
     return Container(
       color: _theme.bg,
-      child: CodeTheme(
-        data: CodeThemeData(
-          styles: {
-            'root': TextStyle(
-              color: _theme.textPri,
-              backgroundColor: _theme.bg,
-            ),
-            'keyword': TextStyle(color: _theme.kwColor),
-            'string': TextStyle(color: _theme.strColor),
-            'comment': TextStyle(
-              color: _theme.commentColor,
-              fontStyle: FontStyle.italic,
-            ),
-            'number': TextStyle(color: _theme.numColor),
-            'function': TextStyle(color: _theme.fnColor),
-            'title': TextStyle(color: _theme.fnColor),
-            'params': TextStyle(color: _theme.varColor),
-            'variable': TextStyle(color: _theme.varColor),
-            'attr': TextStyle(color: _theme.varColor),
-            'built_in': TextStyle(color: _theme.kwColor),
-            'literal': TextStyle(color: _theme.numColor),
-            'type': TextStyle(color: _theme.fnColor),
-            'class': TextStyle(color: _theme.fnColor),
-            'tag': TextStyle(color: _theme.kwColor),
-          },
-        ),
-        child: CodeField(
+      child: Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (_) {
+          _lastEditorTouchDown = DateTime.now();
+        },
+        onPointerUp: (_) {
+          if (_lastEditorTouchDown != null) {
+            final duration = DateTime.now().difference(_lastEditorTouchDown!);
+            // Se foi um toque rápido (não foi um long press)
+            if (duration.inMilliseconds < 500) {
+              // Dá um tempo curto para o TextField processar o tap interno
+              Future.delayed(const Duration(milliseconds: 50), () {
+                if (!mounted) return;
+                try {
+                  final selection = _activeController.selection;
+                  // Se o TextField tentou selecionar uma palavra, forçamos o cursor simples
+                  if (selection.baseOffset != selection.extentOffset) {
+                    _activeController.selection = TextSelection.collapsed(
+                      offset: selection.extentOffset,
+                    );
+                  }
+                } catch (_) {}
+              });
+            }
+          }
+        },
+        child: CodeTheme(
+          data: CodeThemeData(
+            styles: {
+              'root': TextStyle(
+                color: _theme.textPri,
+                backgroundColor: _theme.bg,
+              ),
+              'keyword': TextStyle(color: _theme.kwColor),
+              'string': TextStyle(color: _theme.strColor),
+              'comment': TextStyle(
+                color: _theme.commentColor,
+                fontStyle: FontStyle.italic,
+              ),
+              'number': TextStyle(color: _theme.numColor),
+              'function': TextStyle(color: _theme.fnColor),
+              'title': TextStyle(color: _theme.fnColor),
+              'params': TextStyle(color: _theme.varColor),
+              'variable': TextStyle(color: _theme.varColor),
+              'attr': TextStyle(color: _theme.varColor),
+              'built_in': TextStyle(color: _theme.kwColor),
+              'literal': TextStyle(color: _theme.numColor),
+              'type': TextStyle(color: _theme.fnColor),
+              'class': TextStyle(color: _theme.fnColor),
+              'tag': TextStyle(color: _theme.kwColor),
+            },
+          ),
+          child: CodeField(
           key: ValueKey(_activeTabIndex),
           controller: _activeController,
           focusNode: _activeFocusNode,
@@ -2288,6 +2616,7 @@ class _EditorScreenState extends State<EditorScreen> {
             ),
             width: 40,
           ),
+        ),
         ),
       ),
     );
