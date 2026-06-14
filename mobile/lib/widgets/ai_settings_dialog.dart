@@ -165,6 +165,7 @@ class _AISettingsDialogState extends State<AISettingsDialog> {
                 ),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
+                  isExpanded: true,
                   initialValue: _selectedModel,
                   decoration: InputDecoration(
                     prefixIcon: Icon(Icons.auto_awesome, color: theme.accent),
@@ -183,6 +184,7 @@ class _AISettingsDialogState extends State<AISettingsDialog> {
                           child: Text(
                             m['label']!,
                             style: TextStyle(fontSize: 13, color: theme.textPri),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       )
