@@ -44,9 +44,9 @@ class _AISettingsDialogState extends State<AISettingsDialog> {
 
   Future<void> _saveApiKey() async {
     if (_apiKeyController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Digite a chave API')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Digite a chave API')));
       return;
     }
 
@@ -66,12 +66,16 @@ class _AISettingsDialogState extends State<AISettingsDialog> {
       // Mostra o erro real da API (expirada, cota, inválida, etc.)
       String errorMsg = e.toString();
       // Simplifica mensagens comuns
-      if (errorMsg.contains('API_KEY_INVALID') || errorMsg.contains('invalid_argument')) {
+      if (errorMsg.contains('API_KEY_INVALID') ||
+          errorMsg.contains('invalid_argument')) {
         errorMsg = '❌ Chave inválida. Verifique se copiou corretamente.';
       } else if (errorMsg.contains('PERMISSION_DENIED')) {
-        errorMsg = '❌ Permissão negada. A chave pode ter expirado ou não ter acesso à API Gemini.';
-      } else if (errorMsg.contains('quota') || errorMsg.contains('RESOURCE_EXHAUSTED')) {
-        errorMsg = '⚠️ Cota da chave esgotada. Tente uma chave diferente ou aguarde.';
+        errorMsg =
+            '❌ Permissão negada. A chave pode ter expirado ou não ter acesso à API Gemini.';
+      } else if (errorMsg.contains('quota') ||
+          errorMsg.contains('RESOURCE_EXHAUSTED')) {
+        errorMsg =
+            '⚠️ Cota da chave esgotada. Tente uma chave diferente ou aguarde.';
       } else {
         errorMsg = '❌ Erro: $e';
       }
@@ -156,7 +160,7 @@ class _AISettingsDialogState extends State<AISettingsDialog> {
                 ),
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
-                  value: _selectedModel,
+                  initialValue: _selectedModel,
                   decoration: InputDecoration(
                     prefixIcon: const Icon(Icons.auto_awesome),
                     border: OutlineInputBorder(
@@ -168,13 +172,15 @@ class _AISettingsDialogState extends State<AISettingsDialog> {
                     ),
                   ),
                   items: AIService.availableModels
-                      .map((m) => DropdownMenuItem(
-                            value: m['id'],
-                            child: Text(
-                              m['label']!,
-                              style: const TextStyle(fontSize: 13),
-                            ),
-                          ))
+                      .map(
+                        (m) => DropdownMenuItem(
+                          value: m['id'],
+                          child: Text(
+                            m['label']!,
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ),
+                      )
                       .toList(),
                   onChanged: _onModelChanged,
                 ),

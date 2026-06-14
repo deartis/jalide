@@ -37,11 +37,25 @@ JALIDE é uma IDE móvel moderna e poderosa desenvolvida em Flutter, com suporte
 
 ---
 
-## 🎯 O que há de novo (v0.1.0+4)
+## 🎯 O que há de novo (v0.1.0+5)
 
-### 🤖 Autocomplete Inteligente
-- **Sugestões por linguagem** — Quando você abre um arquivo JavaScript, o editor sugere `console`, `fetch`, `async`. Para Python, `print`, `import`, `json`. Automaticamente!
-- **Como funciona:** Abra um arquivo `.js`, `.py`, `.dart`, `.cpp` ou qualquer um dos 8+ idiomas suportados — as sugestões mudam na hora.
+### 🤖 Integração com IA (Google Gemma)
+- **Assistente IA Gratuito** — Tire dúvidas, peça sugestões ou gere códigos conversando com a IA usando a Chave de API do Google AI Studio.
+- **Sugestões Contextuais (Ghost Suggestions)** — IA analisando seu código em tempo real e oferecendo sugestões (ativável nas configurações).
+- **Sem Limites Ocultos** — O aplicativo conecta diretamente ao seu provedor, então não há custos ou taxas escondidas!
+
+### 🧹 Auto-Format Offline
+- **Formatação de Código Sem IA** — Mantendo a essência do "máximo grátis", implementamos um formatador embutido para limpar recuos e espaços.
+- **Auto-Format on Save** — Option para formatar o código magicamente toda vez que você salvar.
+
+### 📱 Experiência Mobile Melhorada
+- **Seleção de Texto Inteligente** — Corrigido o comportamento do toque; agora toques curtos apenas movem o cursor, evitando menus de seleção indesejados. Segure o dedo para ativar a seleção de texto.
+
+---
+
+## 🎯 Na versão anterior (v0.1.0+4)
+
+### 🚀 Autocomplete Inteligente
 - **Digite e veja:** Conforme você digita, sugestões relevantes aparecem (como no VSCode).
 
 ### 🔐 SSH Melhorado

@@ -147,7 +147,9 @@ class _EditorScreenState extends State<EditorScreen> {
   void initState() {
     super.initState();
     _sshProfileManager.load();
-    _sshConnectionManager = SshConnectionManager(profileManager: _sshProfileManager);
+    _sshConnectionManager = SshConnectionManager(
+      profileManager: _sshProfileManager,
+    );
     _initializeAI();
     _initializeSshConnectionManager();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -157,7 +159,7 @@ class _EditorScreenState extends State<EditorScreen> {
 
   Future<void> _initializeSshConnectionManager() async {
     await _sshConnectionManager.initialize();
-    
+
     // Tenta reconectar na última conexão bem-sucedida (opcional)
     final lastProfile = await _sshConnectionManager.getLastSuccessfulProfile();
     if (lastProfile != null && mounted) {
@@ -299,7 +301,9 @@ class _EditorScreenState extends State<EditorScreen> {
 
   Future<void> _saveTabsPreference() async {
     final prefs = await SharedPreferences.getInstance();
-    final validTabs = _openTabs.where((t) => t['path'] != null && (t['path'] as String).isNotEmpty).toList();
+    final validTabs = _openTabs
+        .where((t) => t['path'] != null && (t['path'] as String).isNotEmpty)
+        .toList();
     final List<Map<String, dynamic>> tabsData = validTabs.map((t) {
       return {
         'path': t['path'] as String,
@@ -436,7 +440,7 @@ class _EditorScreenState extends State<EditorScreen> {
     // Aplica sugestões padrão baseadas na linguagem
     final langName = _getLanguageDisplayName(language);
     applyLanguageSuggestions(controller, langName);
-    
+
     controller.addListener(() {
       if (mounted) onChanged();
     });
@@ -570,23 +574,36 @@ class _EditorScreenState extends State<EditorScreen> {
                     final isCurrent = _languageName == lang['displayName'];
                     return ListTile(
                       dense: true,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                      ),
                       title: Text(
                         lang['name'] as String,
                         style: TextStyle(
                           color: isCurrent ? _theme.accent : _theme.textPri,
-                          fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+                          fontWeight: isCurrent
+                              ? FontWeight.bold
+                              : FontWeight.normal,
                           fontSize: 14,
                         ),
                       ),
                       trailing: isCurrent
-                          ? Icon(Icons.check_circle, color: _theme.accent, size: 18)
+                          ? Icon(
+                              Icons.check_circle,
+                              color: _theme.accent,
+                              size: 18,
+                            )
                           : null,
                       onTap: () {
                         setState(() {
-                          _openTabs[_activeTabIndex]['languageName'] = lang['displayName'];
-                          _activeController.language = lang['highlight'] as Mode?;
-                          applyLanguageSuggestions(_activeController, lang['displayName'] as String);
+                          _openTabs[_activeTabIndex]['languageName'] =
+                              lang['displayName'];
+                          _activeController.language =
+                              lang['highlight'] as Mode?;
+                          applyLanguageSuggestions(
+                            _activeController,
+                            lang['displayName'] as String,
+                          );
                         });
                         Navigator.pop(ctx);
                       },
@@ -634,10 +651,13 @@ class _EditorScreenState extends State<EditorScreen> {
     }
 
     final physicalActivePath = _resolveSafPath(_activePath!);
-    final physicalProjectPath = _projectPath != null ? _resolveSafPath(_projectPath!) : null;
+    final physicalProjectPath = _projectPath != null
+        ? _resolveSafPath(_projectPath!)
+        : null;
 
     String fileRunPath = '';
-    if (physicalProjectPath != null && physicalActivePath.startsWith(physicalProjectPath)) {
+    if (physicalProjectPath != null &&
+        physicalActivePath.startsWith(physicalProjectPath)) {
       fileRunPath = p.relative(physicalActivePath, from: physicalProjectPath);
       if (!fileRunPath.startsWith('.')) {
         fileRunPath = './$fileRunPath';
@@ -664,13 +684,17 @@ class _EditorScreenState extends State<EditorScreen> {
       case '.cc':
         final binName = p.basenameWithoutExtension(fileRunPath);
         final parentPath = p.dirname(fileRunPath);
-        final outBin = parentPath == '.' ? './$binName' : '$parentPath/$binName';
+        final outBin = parentPath == '.'
+            ? './$binName'
+            : '$parentPath/$binName';
         command = 'clang++ "$fileRunPath" -o "$outBin" && "$outBin"';
         break;
       case '.c':
         final cBinName = p.basenameWithoutExtension(fileRunPath);
         final cParentPath = p.dirname(fileRunPath);
-        final cOutBin = cParentPath == '.' ? './$cBinName' : '$cParentPath/$cBinName';
+        final cOutBin = cParentPath == '.'
+            ? './$cBinName'
+            : '$cParentPath/$cBinName';
         command = 'clang "$fileRunPath" -o "$cOutBin" && "$cOutBin"';
         break;
       case '.sh':
@@ -696,7 +720,7 @@ class _EditorScreenState extends State<EditorScreen> {
     try {
       final uri = Uri.parse(safUri);
       final decodedPath = Uri.decodeComponent(uri.path);
-      
+
       // Encontra a parte depois de tree/ ou document/ (document/ tem precedência para URIs de arquivos sob pastas)
       String? treeOrDocPart;
       final docIndex = decodedPath.indexOf('document/');
@@ -708,7 +732,7 @@ class _EditorScreenState extends State<EditorScreen> {
           treeOrDocPart = decodedPath.substring(treeIndex + 5);
         }
       }
-      
+
       if (treeOrDocPart != null) {
         if (treeOrDocPart.startsWith('primary:')) {
           final relativePath = treeOrDocPart.substring(8);
@@ -922,13 +946,18 @@ class _EditorScreenState extends State<EditorScreen> {
         _openTabs[_activeTabIndex]['name'] = p.basename(finalPath);
         _openTabs[_activeTabIndex]['hasUnsavedChanges'] = false;
         _openTabs[_activeTabIndex]['initialContent'] = content;
-        _openTabs[_activeTabIndex]['languageName'] = _getInitialLanguageName(finalPath);
+        _openTabs[_activeTabIndex]['languageName'] = _getInitialLanguageName(
+          finalPath,
+        );
         _activeController.language = _langForPath(finalPath);
       });
       _saveTabsPreference();
       // Atualiza o explorer se o arquivo foi salvo na pasta do projeto
       if (_projectPath != null) await _loadProjectFiles(_projectPath!);
-      _showToast('Salvo como ${p.basename(finalPath)}', type: _ToastType.success);
+      _showToast(
+        'Salvo como ${p.basename(finalPath)}',
+        type: _ToastType.success,
+      );
     } catch (e) {
       _showToast('Erro ao salvar como: $e', type: _ToastType.error);
       debugPrint('JALIDE_SAVE_AS_ERROR: $e');
@@ -945,15 +974,17 @@ class _EditorScreenState extends State<EditorScreen> {
         return;
       }
       final tabIndex = _openTabs.indexOf(tab);
-      if (tabIndex != -1 && tab['hasUnsavedChanges'] == true && tab['path'] != null) {
+      if (tabIndex != -1 &&
+          tab['hasUnsavedChanges'] == true &&
+          tab['path'] != null) {
         setState(() => _isSaving = true);
         try {
           final path = tab['path'] as String;
           final controller = tab['controller'] as CodeController;
           final isRemote = tab['isRemote'] == true;
-          
+
           debugPrint('JALIDE_AUTOSAVE: $path');
-          
+
           if (path.startsWith('content://')) {
             await _termuxChannel.invokeMethod('writeSafFile', {
               'uri': path,
@@ -965,7 +996,7 @@ class _EditorScreenState extends State<EditorScreen> {
             final file = File(path);
             await file.writeAsString(controller.text);
           }
-          
+
           setState(() {
             tab['hasUnsavedChanges'] = false;
             tab['initialContent'] = controller.text;
@@ -998,9 +1029,9 @@ class _EditorScreenState extends State<EditorScreen> {
         final path = tab['path'] as String;
         final controller = tab['controller'] as CodeController;
         final isRemote = tab['isRemote'] == true;
-        
+
         debugPrint('JALIDE_INSTANT_SAVE: $path');
-        
+
         if (path.startsWith('content://')) {
           await _termuxChannel.invokeMethod('writeSafFile', {
             'uri': path,
@@ -1012,7 +1043,7 @@ class _EditorScreenState extends State<EditorScreen> {
           final file = File(path);
           await file.writeAsString(controller.text);
         }
-        
+
         setState(() {
           tab['hasUnsavedChanges'] = false;
           tab['initialContent'] = controller.text;
@@ -1084,7 +1115,8 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   void _handleAuxKeyTap(String key) {
-    final bool isTerminalActive = _isTerminalVisible &&
+    final bool isTerminalActive =
+        _isTerminalVisible &&
         _activeTerminalState != null &&
         (_activeTabIndex == -1 || !_activeFocusNode.hasFocus);
 
@@ -1097,15 +1129,19 @@ class _EditorScreenState extends State<EditorScreen> {
 
       if (_ctrlActive) {
         setState(() => _ctrlActive = false);
-        if (key.startsWith('Z')) _activeTerminalState!.sendInput('\x1a');
-        else if (key.startsWith('Y')) _activeTerminalState!.sendInput('\x19');
-        else if (key.startsWith('A')) _activeTerminalState!.sendInput('\x01');
+        if (key.startsWith('Z')) {
+          _activeTerminalState!.sendInput('\x1a');
+        } else if (key.startsWith('Y'))
+          _activeTerminalState!.sendInput('\x19');
+        else if (key.startsWith('A'))
+          _activeTerminalState!.sendInput('\x01');
         else if (key.startsWith('C')) {
           _activeTerminalState!.sendInput('\x03');
           _showToast('Ctrl+C enviado');
         } else if (key.startsWith('V')) {
           Clipboard.getData(Clipboard.kTextPlain).then((data) {
-            if (data?.text != null) _activeTerminalState!.sendInput(data!.text!);
+            if (data?.text != null)
+              _activeTerminalState!.sendInput(data!.text!);
           });
         } else if (key.startsWith('X')) {
           _activeTerminalState!.sendInput('\x18');
@@ -1117,17 +1153,38 @@ class _EditorScreenState extends State<EditorScreen> {
 
       // Teclas de navegação e especiais no terminal
       switch (key) {
-        case 'Tab': _activeTerminalState!.sendInput('\t'); break;
-        case '←': _activeTerminalState!.sendInput('\x1b[D'); break;
-        case '→': _activeTerminalState!.sendInput('\x1b[C'); break;
-        case '↑': _activeTerminalState!.sendInput('\x1b[A'); break;
-        case '↓': _activeTerminalState!.sendInput('\x1b[B'); break;
-        case 'BACKSPACE': _activeTerminalState!.sendInput('\x7f'); break;
-        case 'ESC': _activeTerminalState!.sendInput('\x1b'); break;
-        case 'HOME': _activeTerminalState!.sendInput('\x1b[H'); break;
-        case 'END': _activeTerminalState!.sendInput('\x1b[F'); break;
-        case 'ENTER': _activeTerminalState!.sendInput('\n'); break;
-        default: _activeTerminalState!.sendInput(key.replaceAll(' ', ''));
+        case 'Tab':
+          _activeTerminalState!.sendInput('\t');
+          break;
+        case '←':
+          _activeTerminalState!.sendInput('\x1b[D');
+          break;
+        case '→':
+          _activeTerminalState!.sendInput('\x1b[C');
+          break;
+        case '↑':
+          _activeTerminalState!.sendInput('\x1b[A');
+          break;
+        case '↓':
+          _activeTerminalState!.sendInput('\x1b[B');
+          break;
+        case 'BACKSPACE':
+          _activeTerminalState!.sendInput('\x7f');
+          break;
+        case 'ESC':
+          _activeTerminalState!.sendInput('\x1b');
+          break;
+        case 'HOME':
+          _activeTerminalState!.sendInput('\x1b[H');
+          break;
+        case 'END':
+          _activeTerminalState!.sendInput('\x1b[F');
+          break;
+        case 'ENTER':
+          _activeTerminalState!.sendInput('\n');
+          break;
+        default:
+          _activeTerminalState!.sendInput(key.replaceAll(' ', ''));
       }
       return;
     }
@@ -1144,23 +1201,36 @@ class _EditorScreenState extends State<EditorScreen> {
       setState(() => _ctrlActive = false);
 
       if (key.startsWith('Z')) {
-        try { (_activeController as dynamic).undo(); } catch (_) {
-          Actions.maybeInvoke<UndoTextIntent>(context,
-              const UndoTextIntent(SelectionChangedCause.keyboard));
+        try {
+          (_activeController as dynamic).undo();
+        } catch (_) {
+          Actions.maybeInvoke<UndoTextIntent>(
+            context,
+            const UndoTextIntent(SelectionChangedCause.keyboard),
+          );
         }
       } else if (key.startsWith('Y')) {
-        try { (_activeController as dynamic).redo(); } catch (_) {
-          Actions.maybeInvoke<RedoTextIntent>(context,
-              const RedoTextIntent(SelectionChangedCause.keyboard));
+        try {
+          (_activeController as dynamic).redo();
+        } catch (_) {
+          Actions.maybeInvoke<RedoTextIntent>(
+            context,
+            const RedoTextIntent(SelectionChangedCause.keyboard),
+          );
         }
       } else if (key.startsWith('A')) {
         _activeController.selection = TextSelection(
-            baseOffset: 0, extentOffset: _activeController.text.length);
+          baseOffset: 0,
+          extentOffset: _activeController.text.length,
+        );
       } else if (key.startsWith('C')) {
         final sel = _activeController.selection;
         if (sel.isValid && !sel.isCollapsed) {
-          Clipboard.setData(ClipboardData(
-              text: _activeController.text.substring(sel.start, sel.end)));
+          Clipboard.setData(
+            ClipboardData(
+              text: _activeController.text.substring(sel.start, sel.end),
+            ),
+          );
           _showToast('Copiado');
         }
       } else if (key.startsWith('V')) {
@@ -1170,11 +1240,13 @@ class _EditorScreenState extends State<EditorScreen> {
             final sel = _activeController.selection;
             if (sel.isValid) {
               _activeController.value = _activeController.value.copyWith(
-                text: text.substring(0, sel.start) +
+                text:
+                    text.substring(0, sel.start) +
                     data!.text! +
                     text.substring(sel.end),
                 selection: TextSelection.collapsed(
-                    offset: sel.start + data.text!.length),
+                  offset: sel.start + data.text!.length,
+                ),
               );
             }
           }
@@ -1183,8 +1255,9 @@ class _EditorScreenState extends State<EditorScreen> {
         final sel = _activeController.selection;
         if (sel.isValid && !sel.isCollapsed) {
           final text = _activeController.text;
-          Clipboard.setData(ClipboardData(
-              text: text.substring(sel.start, sel.end)));
+          Clipboard.setData(
+            ClipboardData(text: text.substring(sel.start, sel.end)),
+          );
           _activeController.value = _activeController.value.copyWith(
             text: text.substring(0, sel.start) + text.substring(sel.end),
             selection: TextSelection.collapsed(offset: sel.start),
@@ -1206,7 +1279,7 @@ class _EditorScreenState extends State<EditorScreen> {
           final end = lineEnd == -1 ? text.length : lineEnd;
           final line = text.substring(lineStart, end);
           final newText =
-              text.substring(0, end) + '\n' + line + text.substring(end);
+              '${text.substring(0, end)}\n$line${text.substring(end)}';
           _activeController.value = _activeController.value.copyWith(
             text: newText,
             selection: TextSelection.collapsed(offset: end + 1 + line.length),
@@ -1227,16 +1300,17 @@ class _EditorScreenState extends State<EditorScreen> {
       case '←':
         final selL = _activeController.selection;
         if (selL.isValid && selL.start > 0) {
-          _activeController.selection =
-              TextSelection.collapsed(offset: selL.start - 1);
+          _activeController.selection = TextSelection.collapsed(
+            offset: selL.start - 1,
+          );
         }
         break;
       case '→':
         final selR = _activeController.selection;
-        if (selR.isValid &&
-            selR.start < _activeController.text.length) {
-          _activeController.selection =
-              TextSelection.collapsed(offset: selR.start + 1);
+        if (selR.isValid && selR.start < _activeController.text.length) {
+          _activeController.selection = TextSelection.collapsed(
+            offset: selR.start + 1,
+          );
         }
         break;
       case '↑':
@@ -1248,10 +1322,10 @@ class _EditorScreenState extends State<EditorScreen> {
           if (lines.length > 1) {
             final col = lines.last.length;
             final prevLine = lines[lines.length - 2];
-            final prevStart =
-                before.length - col - 1 - prevLine.length;
+            final prevStart = before.length - col - 1 - prevLine.length;
             _activeController.selection = TextSelection.collapsed(
-                offset: prevStart + col.clamp(0, prevLine.length));
+              offset: prevStart + col.clamp(0, prevLine.length),
+            );
           }
         }
         break;
@@ -1265,10 +1339,10 @@ class _EditorScreenState extends State<EditorScreen> {
           final afterLines = after.split('\n');
           if (afterLines.length > 1) {
             final nextLine = afterLines[1];
-            final nextStart =
-                before.length + afterLines[0].length + 1;
+            final nextStart = before.length + afterLines[0].length + 1;
             _activeController.selection = TextSelection.collapsed(
-                offset: nextStart + col.clamp(0, nextLine.length));
+              offset: nextStart + col.clamp(0, nextLine.length),
+            );
           }
         }
         break;
@@ -1278,17 +1352,15 @@ class _EditorScreenState extends State<EditorScreen> {
           final text = _activeController.text;
           if (!selBs.isCollapsed) {
             _activeController.value = _activeController.value.copyWith(
-              text: text.substring(0, selBs.start) +
-                  text.substring(selBs.end),
-              selection:
-                  TextSelection.collapsed(offset: selBs.start),
+              text: text.substring(0, selBs.start) + text.substring(selBs.end),
+              selection: TextSelection.collapsed(offset: selBs.start),
             );
           } else if (selBs.start > 0) {
             _activeController.value = _activeController.value.copyWith(
-              text: text.substring(0, selBs.start - 1) +
+              text:
+                  text.substring(0, selBs.start - 1) +
                   text.substring(selBs.start),
-              selection:
-                  TextSelection.collapsed(offset: selBs.start - 1),
+              selection: TextSelection.collapsed(offset: selBs.start - 1),
             );
           }
         }
@@ -1299,8 +1371,9 @@ class _EditorScreenState extends State<EditorScreen> {
         if (selH.isValid) {
           final before = textH.substring(0, selH.start);
           final lineStart = before.lastIndexOf('\n') + 1;
-          _activeController.selection =
-              TextSelection.collapsed(offset: lineStart);
+          _activeController.selection = TextSelection.collapsed(
+            offset: lineStart,
+          );
         }
         break;
       case 'END':
@@ -1309,11 +1382,8 @@ class _EditorScreenState extends State<EditorScreen> {
         if (selE.isValid) {
           final after = textE.substring(selE.start);
           final lineEnd = after.indexOf('\n');
-          final offset = lineEnd == -1
-              ? textE.length
-              : selE.start + lineEnd;
-          _activeController.selection =
-              TextSelection.collapsed(offset: offset);
+          final offset = lineEnd == -1 ? textE.length : selE.start + lineEnd;
+          _activeController.selection = TextSelection.collapsed(offset: offset);
         }
         break;
       case 'ENTER':
@@ -1328,12 +1398,10 @@ class _EditorScreenState extends State<EditorScreen> {
           if (lines.length > 1) {
             final col = lines.last.length;
             final prevLine = lines[lines.length - 2];
-            final prevStart =
-                before.length - col - 1 - prevLine.length;
+            final prevStart = before.length - col - 1 - prevLine.length;
             _activeController.selection = TextSelection(
               baseOffset: selSU.baseOffset,
-              extentOffset:
-                  prevStart + col.clamp(0, prevLine.length),
+              extentOffset: prevStart + col.clamp(0, prevLine.length),
             );
           }
         }
@@ -1348,12 +1416,10 @@ class _EditorScreenState extends State<EditorScreen> {
           final afterLines = after.split('\n');
           if (afterLines.length > 1) {
             final nextLine = afterLines[1];
-            final nextStart =
-                before.length + afterLines[0].length + 1;
+            final nextStart = before.length + afterLines[0].length + 1;
             _activeController.selection = TextSelection(
               baseOffset: selSD.baseOffset,
-              extentOffset:
-                  nextStart + col.clamp(0, nextLine.length),
+              extentOffset: nextStart + col.clamp(0, nextLine.length),
             );
           }
         }
@@ -1373,9 +1439,7 @@ class _EditorScreenState extends State<EditorScreen> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('ghost_suggestions_enabled', newValue);
     _showToast(
-      newValue
-          ? '✨ Sugestões IA ativadas'
-          : '🚫 Sugestões IA desativadas',
+      newValue ? '✨ Sugestões IA ativadas' : '🚫 Sugestões IA desativadas',
     );
   }
 
@@ -1386,17 +1450,20 @@ class _EditorScreenState extends State<EditorScreen> {
     final text = controller.text;
     if (text.isEmpty) return;
 
-    final lang = _openTabs[_activeTabIndex]['languageName'] as String? ?? 'TEXT';
+    final lang =
+        _openTabs[_activeTabIndex]['languageName'] as String? ?? 'TEXT';
 
     try {
       final formatted = CodeFormatter.format(text, lang);
-      
+
       if (formatted != text) {
         final selection = controller.selection;
         controller.value = controller.value.copyWith(
           text: formatted,
           selection: selection.isValid
-              ? TextSelection.collapsed(offset: selection.baseOffset.clamp(0, formatted.length))
+              ? TextSelection.collapsed(
+                  offset: selection.baseOffset.clamp(0, formatted.length),
+                )
               : const TextSelection.collapsed(offset: -1),
         );
         if (!silent) {
@@ -1426,10 +1493,7 @@ class _EditorScreenState extends State<EditorScreen> {
     );
   }
 
-  void _showToast(
-    String msg, {
-    _ToastType type = _ToastType.info,
-  }) {
+  void _showToast(String msg, {_ToastType type = _ToastType.info}) {
     if (!mounted) return;
 
     final snackBarTheme = switch (type) {
@@ -1476,8 +1540,13 @@ class _EditorScreenState extends State<EditorScreen> {
                 borderRadius: BorderRadius.circular(999),
               ),
               child: IconButton(
-                onPressed: () => ScaffoldMessenger.of(context).hideCurrentSnackBar(),
-                icon: Icon(Icons.close, color: snackBarTheme.iconColor, size: 18),
+                onPressed: () =>
+                    ScaffoldMessenger.of(context).hideCurrentSnackBar(),
+                icon: Icon(
+                  Icons.close,
+                  color: snackBarTheme.iconColor,
+                  size: 18,
+                ),
                 padding: const EdgeInsets.all(6),
                 constraints: const BoxConstraints(),
                 tooltip: 'Fechar',
@@ -1491,7 +1560,9 @@ class _EditorScreenState extends State<EditorScreen> {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(10),
           side: BorderSide(
-            color: type == _ToastType.info ? _theme.accent : snackBarTheme.iconColor,
+            color: type == _ToastType.info
+                ? _theme.accent
+                : snackBarTheme.iconColor,
             width: 1,
           ),
         ),
@@ -1511,9 +1582,9 @@ class _EditorScreenState extends State<EditorScreen> {
       return;
     }
 
-    final affectedCurrentFile = _activePath != null &&
-        (_activePath == path ||
-            (isDir && _activePath!.startsWith('$path/')));
+    final affectedCurrentFile =
+        _activePath != null &&
+        (_activePath == path || (isDir && _activePath!.startsWith('$path/')));
 
     if (affectedCurrentFile && _activeHasUnsavedChanges) {
       _showToast('Salve ou feche a aba antes de excluir este item');
@@ -1539,10 +1610,7 @@ class _EditorScreenState extends State<EditorScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(
-              'Excluir',
-              style: TextStyle(color: Colors.redAccent),
-            ),
+            child: Text('Excluir', style: TextStyle(color: Colors.redAccent)),
           ),
         ],
       ),
@@ -1574,7 +1642,10 @@ class _EditorScreenState extends State<EditorScreen> {
         await _loadProjectFiles(refreshPath);
       }
 
-      _showToast('${isDir ? 'Pasta' : 'Arquivo'} excluído com sucesso', type: _ToastType.success);
+      _showToast(
+        '${isDir ? 'Pasta' : 'Arquivo'} excluído com sucesso',
+        type: _ToastType.success,
+      );
     } catch (e) {
       _showToast('Erro ao excluir: $e', type: _ToastType.error);
     }
@@ -1843,7 +1914,10 @@ class _EditorScreenState extends State<EditorScreen> {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('last_project_path', symlinkTarget);
         await _loadProjectFiles(symlinkTarget);
-        _showToast('✅ Workspace "$folderName" aberto!', type: _ToastType.success);
+        _showToast(
+          '✅ Workspace "$folderName" aberto!',
+          type: _ToastType.success,
+        );
       } else {
         _showToast(
           '⚠️ Link não criado. Verifique:\n'
@@ -1898,7 +1972,11 @@ class _EditorScreenState extends State<EditorScreen> {
     }
   }
 
-  Future<void> _createNewEntity(String name, bool isFile, {String? basePath}) async {
+  Future<void> _createNewEntity(
+    String name,
+    bool isFile, {
+    String? basePath,
+  }) async {
     final targetBasePath = basePath ?? _projectPath;
     if (targetBasePath == null) return;
     final path = p.join(targetBasePath, name);
@@ -2058,7 +2136,8 @@ class _EditorScreenState extends State<EditorScreen> {
                             if (state != null) {
                               _activeTerminalState = state;
                             } else {
-                              if (_activeTerminalState != null && !_activeTerminalState!.mounted) {
+                              if (_activeTerminalState != null &&
+                                  !_activeTerminalState!.mounted) {
                                 _activeTerminalState = null;
                               }
                             }
@@ -2181,7 +2260,9 @@ class _EditorScreenState extends State<EditorScreen> {
           icon: Icon(
             Icons.play_arrow_rounded,
             size: 24,
-            color: _activeTabIndex != -1 ? const Color(0xFF50FA7B) : _theme.textMuted,
+            color: _activeTabIndex != -1
+                ? const Color(0xFF50FA7B)
+                : _theme.textMuted,
           ),
           tooltip: 'Executar arquivo',
         ),
@@ -2249,16 +2330,28 @@ class _EditorScreenState extends State<EditorScreen> {
             _menuItem(
               'autosave',
               _autoSaveEnabled ? 'Auto-Save: [ON]' : 'Auto-Save: [OFF]',
-              _autoSaveEnabled ? Icons.toggle_on_outlined : Icons.toggle_off_outlined,
+              _autoSaveEnabled
+                  ? Icons.toggle_on_outlined
+                  : Icons.toggle_off_outlined,
             ),
             _menuItem(
               'autoformat',
               _autoFormatOnSave ? 'Auto-Format: [ON]' : 'Auto-Format: [OFF]',
-              _autoFormatOnSave ? Icons.align_horizontal_left : Icons.align_horizontal_left_outlined,
+              _autoFormatOnSave
+                  ? Icons.align_horizontal_left
+                  : Icons.align_horizontal_left_outlined,
             ),
-            _menuItem('format', 'Formatar Código', Icons.format_align_left_outlined),
+            _menuItem(
+              'format',
+              'Formatar Código',
+              Icons.format_align_left_outlined,
+            ),
             const PopupMenuDivider(),
-            _menuItem('ai_settings', 'Config. Gemma IA', Icons.settings_outlined),
+            _menuItem(
+              'ai_settings',
+              'Config. Gemma IA',
+              Icons.settings_outlined,
+            ),
             _menuItem(
               'ghost',
               _ghostSuggestionsEnabled
@@ -2443,10 +2536,10 @@ class _EditorScreenState extends State<EditorScreen> {
               _hasTerminalBeenOpened = true;
               _isTerminalVisible = true;
             });
-            
+
             // Registra na sessão do gerenciador
             _sshConnectionManager.setCurrentSession(session, session.profile);
-            
+
             // Ao conectar, pergunta se quer abrir a home remota
             final home = await session.getHomeDir();
             await _loadRemoteProjectFiles(home);
@@ -2471,10 +2564,7 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   void _showAISettingsDialog() {
-    showDialog(
-      context: context,
-      builder: (_) => const AISettingsDialog(),
-    );
+    showDialog(context: context, builder: (_) => const AISettingsDialog());
   }
 
   String? _getLanguageForCurrentFile() {
@@ -2594,29 +2684,29 @@ class _EditorScreenState extends State<EditorScreen> {
             },
           ),
           child: CodeField(
-          key: ValueKey(_activeTabIndex),
-          controller: _activeController,
-          focusNode: _activeFocusNode,
-          expands: true,
-          minLines: null,
-          maxLines: null,
-          wrap: false,
-          textStyle: TextStyle(
-            fontFamily: 'monospace',
-            fontSize: _fontSize,
-            height: 1.5,
-            color: _theme.textPri,
-          ),
-          cursorColor: _theme.accent,
-          gutterStyle: GutterStyle(
+            key: ValueKey(_activeTabIndex),
+            controller: _activeController,
+            focusNode: _activeFocusNode,
+            expands: true,
+            minLines: null,
+            maxLines: null,
+            wrap: false,
             textStyle: TextStyle(
-              color: _theme.textMuted,
               fontFamily: 'monospace',
-              fontSize: _fontSize - 3 > 8 ? _fontSize - 3 : 8,
+              fontSize: _fontSize,
+              height: 1.5,
+              color: _theme.textPri,
             ),
-            width: 40,
+            cursorColor: _theme.accent,
+            gutterStyle: GutterStyle(
+              textStyle: TextStyle(
+                color: _theme.textMuted,
+                fontFamily: 'monospace',
+                fontSize: _fontSize - 3 > 8 ? _fontSize - 3 : 8,
+              ),
+              width: 40,
+            ),
           ),
-        ),
         ),
       ),
     );
