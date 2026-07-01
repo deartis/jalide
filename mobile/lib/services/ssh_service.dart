@@ -90,7 +90,7 @@ class SshSession {
 
   SshSession({required this.profile}) : state = SshConnectionState.disconnected;
 
-  bool get isConnected => state == SshConnectionState.connected;
+  bool get isConnected => state == SshConnectionState.connected && (_client == null || !_client!.isClosed);
 
   /// Acesso ao cliente SSH (para operações como heartbeat)
   SSHClient? get client => _client;
@@ -285,9 +285,7 @@ class SshSession {
 // ─── Gerenciador de Perfis SSH (persistência segura) ─────────────────────────
 
 class SshProfileManager extends ChangeNotifier {
-  static const _storage = FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
-  );
+  static const _storage = FlutterSecureStorage();
 
   final List<SshProfile> profiles = [];
 

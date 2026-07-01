@@ -19,9 +19,7 @@ class AIService {
   late final GenerativeModel _model;
   late final String _apiKey;
   String _selectedModel = defaultModel;
-  final _storage = const FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
-  );
+  final _storage = const FlutterSecureStorage();
   bool _isInitialized = false;
 
   AIService();

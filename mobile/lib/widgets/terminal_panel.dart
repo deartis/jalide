@@ -76,7 +76,17 @@ class TerminalPanelState extends State<TerminalPanel> {
   @override
   void didUpdateWidget(covariant TerminalPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.projectPath != oldWidget.projectPath && _ready) {
+    
+    if (widget.sshSession != oldWidget.sshSession || widget.mode != oldWidget.mode) {
+      // Re-inicializa o terminal se a sessão ou o modo mudar (ex: reconexão)
+      _ready = false;
+      _errorMessage = null;
+      _ptySubscription?.cancel();
+      _ptySubscription = null;
+      _localPty?.kill();
+      _localPty = null;
+      _initialize();
+    } else if (widget.projectPath != oldWidget.projectPath && _ready) {
       final updatedPath = widget.projectPath;
       if (updatedPath != null) {
         if (widget.mode == TerminalMode.local) {

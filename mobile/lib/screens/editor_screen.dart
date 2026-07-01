@@ -62,7 +62,7 @@ class _SnackBarStyle {
   });
 }
 
-class _EditorScreenState extends State<EditorScreen> {
+class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   // Controller de Tabs
@@ -156,8 +156,11 @@ class _EditorScreenState extends State<EditorScreen> {
     _sshConnectionManager = SshConnectionManager(
       profileManager: _sshProfileManager,
     );
+    _sshConnectionManager.addListener(_onSshConnectionChanged);
+    WidgetsBinding.instance.addObserver(this);
     _initializeAI();
     _initializeSshConnectionManager();
+    _startTermuxSshdIfNeeded();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadPreferences();
     });
@@ -173,8 +176,65 @@ class _EditorScreenState extends State<EditorScreen> {
     }
   }
 
+  Future<void> _startTermuxSshdIfNeeded() async {
+    if (!Platform.isAndroid) return;
+    try {
+      debugPrint('🚀 Solicitando inicialização do sshd no Termux...');
+      await _termuxChannel.invokeMethod('runTermuxCommand', {
+        'script': 'pgrep sshd || sshd',
+      });
+      debugPrint('✅ Comando de inicialização do sshd enviado ao Termux.');
+    } catch (e) {
+      debugPrint('⚠️ Erro ao tentar iniciar sshd no Termux: $e');
+    }
+  }
+
+  void _onSshConnectionChanged() {
+    if (mounted) {
+      setState(() {
+        _activeSshSession = _sshConnectionManager.currentSession;
+        if (_activeSshSession == null) {
+          _terminalMode = TerminalMode.local;
+          _isRemoteProject = false;
+        } else {
+          _terminalMode = TerminalMode.ssh;
+        }
+      });
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkAndReconnectSsh();
+    }
+  }
+
+  Future<void> _checkAndReconnectSsh() async {
+    debugPrint('📱 App retomado. Verificando saúde da conexão SSH...');
+    if (_isRemoteProject || _sshConnectionManager.currentSession != null) {
+      final isHealthy = await _sshConnectionManager.checkConnectionHealth();
+      if (!isHealthy) {
+        _showToast('Conexão SSH perdida. Tentando reconectar...');
+        final success = await _sshConnectionManager.reconnectNow();
+        if (success) {
+          _showToast('SSH reconectado com sucesso!', type: _ToastType.success);
+          if (_projectPath != null && _isRemoteProject) {
+            await _loadRemoteProjectFiles(_projectPath!);
+          }
+        } else {
+          _showToast('Falha ao reconectar SSH', type: _ToastType.error);
+        }
+      } else {
+        debugPrint('🟢 Conexão SSH continua ativa.');
+      }
+    }
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _sshConnectionManager.removeListener(_onSshConnectionChanged);
     _sshConnectionManager.dispose();
     _autoSaveTimer?.cancel();
     _tabController.disposeTabs();
@@ -2169,48 +2229,73 @@ class _EditorScreenState extends State<EditorScreen> {
             side: BorderSide(color: _theme.border),
           ),
           onSelected: (v) async {
-            if (v == 'new') _tabController.createNewTab();
-            if (v == 'save_as') await _saveFileAs();
-            if (v == 'theme') _showThemeDialog();
-            if (v == 'zoom_in') _updateFontSize(_fontSize + 2);
-            if (v == 'zoom_out') _updateFontSize(_fontSize - 2);
-            if (v == 'ssh') _openSshScreen();
-            if (v == 'autosave') _toggleAutoSave();
-            if (v == 'autoformat') _toggleAutoFormatOnSave();
-            if (v == 'format') _formatCode();
-            if (v == 'ghost') _toggleGhostSuggestions();
-            if (v == 'ai_settings') _showAISettingsDialog();
-            if (v == 'exit') {
-              showDialog(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  backgroundColor: _theme.surface,
-                  title: Text('Sair', style: TextStyle(color: _theme.textPri)),
-                  content: Text(
-                    'Tem certeza que deseja sair da aplicação?',
-                    style: TextStyle(color: _theme.textMuted),
+            switch (v) {
+              case 'new':
+                _tabController.createNewTab();
+                break;
+              case 'save_as':
+                await _saveFileAs();
+                break;
+              case 'theme':
+                _showThemeDialog();
+                break;
+              case 'zoom_in':
+                _updateFontSize(_fontSize + 2);
+                break;
+              case 'zoom_out':
+                _updateFontSize(_fontSize - 2);
+                break;
+              case 'ssh':
+                _openSshScreen();
+                break;
+              case 'autosave':
+                _toggleAutoSave();
+                break;
+              case 'autoformat':
+                _toggleAutoFormatOnSave();
+                break;
+              case 'format':
+                _formatCode();
+                break;
+              case 'ghost':
+                _toggleGhostSuggestions();
+                break;
+              case 'ai_settings':
+                _showAISettingsDialog();
+                break;
+              case 'exit':
+                if (!mounted) return;
+                showDialog(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    backgroundColor: _theme.surface,
+                    title: Text('Sair', style: TextStyle(color: _theme.textPri)),
+                    content: Text(
+                      'Tem certeza que deseja sair da aplicação?',
+                      style: TextStyle(color: _theme.textMuted),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: Text(
+                          'Cancelar',
+                          style: TextStyle(color: _theme.textMuted),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          SystemNavigator.pop();
+                        },
+                        child: const Text(
+                          'Sair',
+                          style: TextStyle(color: Colors.redAccent),
+                        ),
+                      ),
+                    ],
                   ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      child: Text(
-                        'Cancelar',
-                        style: TextStyle(color: _theme.textMuted),
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: () {
-                        Navigator.pop(ctx);
-                        SystemNavigator.pop();
-                      },
-                      child: const Text(
-                        'Sair',
-                        style: TextStyle(color: Colors.redAccent),
-                      ),
-                    ),
-                  ],
-                ),
-              );
+                );
+                break;
             }
           },
           itemBuilder: (_) => [
@@ -2379,16 +2464,7 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   Future<void> _disconnectSshSession() async {
-    final session = _activeSshSession;
-    if (session == null) return;
-
-    await session.disconnect();
-
-    if (!mounted) return;
-    setState(() {
-      _activeSshSession = null;
-      _terminalMode = TerminalMode.local;
-    });
+    await _sshConnectionManager.disconnect();
     _showToast('SSH desconectado');
   }
 
