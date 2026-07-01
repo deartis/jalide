@@ -25,6 +25,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/file_service.dart';
 import '../services/ai_service.dart';
 import '../services/ssh_connection_manager.dart';
+import '../services/ssh_foreground_service.dart';
+import '../services/ssh_session_state_service.dart';
 import '../theme/jalide_theme.dart';
 import '../controllers/editor_tab_controller.dart';
 import '../widgets/aux_keyboard.dart';
@@ -35,9 +37,9 @@ import '../widgets/file_explorer.dart';
 import '../widgets/editor_tabs_bar.dart';
 import '../widgets/ai_dialog.dart';
 import '../widgets/ai_settings_dialog.dart';
-import '../widgets/ssh_connection_status_widget.dart';
 import '../utils/code_formatter.dart';
 import 'ssh_connect_screen.dart';
+
 
 class EditorScreen extends StatefulWidget {
   const EditorScreen({super.key});
@@ -161,6 +163,8 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
     _initializeAI();
     _initializeSshConnectionManager();
     _startTermuxSshdIfNeeded();
+    // Escuta o botão "Desconectar" da notificação do Foreground Service
+    SshForegroundService.addDataCallback(_onForegroundServiceData);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadPreferences();
     });
@@ -169,10 +173,31 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
   Future<void> _initializeSshConnectionManager() async {
     await _sshConnectionManager.initialize();
 
-    // Tenta reconectar na última conexão bem-sucedida (opcional)
-    final lastProfile = await _sshConnectionManager.getLastSuccessfulProfile();
-    if (lastProfile != null && mounted) {
-      debugPrint('📱 Última conexão SSH encontrada: ${lastProfile.label}');
+    // Tenta reconectar silenciosamente à última sessão SSH ao iniciar o app
+    final persistedState = await SshSessionStateService.load();
+    if (persistedState != null && mounted) {
+      debugPrint('📱 Estado SSH anterior encontrado: $persistedState');
+      await _sshProfileManager.load();
+      final profile = await _sshConnectionManager.getLastSuccessfulProfile();
+      if (profile != null && mounted) {
+        debugPrint('🔄 Tentando reconexão silenciosa com: ${profile.label}');
+        final success = await _sshConnectionManager.connect(profile);
+        if (success && mounted) {
+          setState(() {
+            _activeSshSession = _sshConnectionManager.currentSession;
+            _terminalMode = TerminalMode.ssh;
+            if (persistedState.isRemoteProject && persistedState.projectPath != null) {
+              _isRemoteProject = true;
+            }
+          });
+          if (persistedState.isRemoteProject && persistedState.projectPath != null && mounted) {
+            await _loadRemoteProjectFiles(persistedState.projectPath!);
+          }
+          _showToast('SSH reconectado: ${profile.label}', type: _ToastType.success);
+        } else {
+          debugPrint('⚠️ Reconexão silenciosa falhou. App inicia em modo local.');
+        }
+      }
     }
   }
 
@@ -193,13 +218,26 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
     if (mounted) {
       setState(() {
         _activeSshSession = _sshConnectionManager.currentSession;
-        if (_activeSshSession == null) {
+        final session = _activeSshSession;
+        if (session == null) {
+          // Sessão completamente nula: resetar para local
           _terminalMode = TerminalMode.local;
           _isRemoteProject = false;
-        } else {
+        } else if (session.isConnected) {
           _terminalMode = TerminalMode.ssh;
         }
+        // Se em estado de erro/reconectando: mantém _terminalMode e _isRemoteProject
+        // intactos — o usuário continua vendo os arquivos remotos em "modo offline".
       });
+    }
+  }
+
+  /// Recebe dados enviados pelo TaskHandler do Foreground Service.
+  /// Atualmente usado para processar o botão "Desconectar" da notificação.
+  void _onForegroundServiceData(Object data) {
+    if (data is Map<String, dynamic> && data['action'] == 'disconnect') {
+      debugPrint('📲 Botão desconectar da notificação pressionado.');
+      _sshConnectionManager.disconnect();
     }
   }
 
@@ -233,6 +271,7 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
 
   @override
   void dispose() {
+    SshForegroundService.removeDataCallback(_onForegroundServiceData);
     WidgetsBinding.instance.removeObserver(this);
     _sshConnectionManager.removeListener(_onSshConnectionChanged);
     _sshConnectionManager.dispose();
@@ -450,6 +489,8 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
               )
               .toList();
         });
+        // Persiste o caminho do projeto para retomada após reinício do app
+        await SshSessionStateService.updateProjectPath(path);
       }
     } catch (e) {
       _showToast('Erro ao listar arquivos remotos: $e', type: _ToastType.error);
@@ -1976,6 +2017,137 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
 
   // _langForPath movido para EditorTabController.langForPath()
 
+  /// Banner exibido quando há projeto remoto aberto mas SSH está desconectado.
+  Widget _buildOfflineBanner() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      color: const Color(0xFF8B6914).withValues(alpha: 0.85),
+      child: Row(
+        children: [
+          const Icon(Icons.wifi_off_rounded, color: Color(0xFFFFC107), size: 16),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Text(
+              '✏️ Modo offline — editando cópia local. SSH será restaurado automaticamente.',
+              style: TextStyle(
+                color: Color(0xFFFFECB3),
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          GestureDetector(
+            onTap: () async {
+              final success = await _sshConnectionManager.reconnectNow();
+              if (mounted) {
+                _showToast(
+                  success ? '✅ Reconectado!' : '❌ Falha ao reconectar',
+                  type: success ? _ToastType.success : _ToastType.error,
+                );
+              }
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFC107).withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: const Color(0xFFFFC107), width: 0.8),
+              ),
+              child: const Text(
+                'Reconectar',
+                style: TextStyle(
+                  color: Color(0xFFFFC107),
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  /// Sheet de opções SSH — aberto ao tocar no chip da status bar.
+  void _showSshStatusSheet(BuildContext context) {
+    final session = _sshConnectionManager.currentSession;
+    final label = session?.profile.label ?? 'SSH';
+    final isConnected = session?.isConnected ?? false;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: _theme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  isConnected ? Icons.cloud_done_rounded : Icons.cloud_off_rounded,
+                  color: isConnected ? const Color(0xFF4CAF50) : const Color(0xFF9E9E9E),
+                  size: 18,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: _theme.textPri,
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  isConnected ? 'conectado' : 'desconectado',
+                  style: TextStyle(
+                    color: isConnected
+                        ? const Color(0xFF4CAF50)
+                        : _theme.textMuted,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (!isConnected)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(Icons.refresh_rounded, color: _theme.textPri, size: 20),
+                title: Text('Reconectar agora', style: TextStyle(color: _theme.textPri)),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  final success = await _sshConnectionManager.reconnectNow();
+                  if (mounted) {
+                    _showToast(
+                      success ? '✅ Reconectado!' : '❌ Falha ao reconectar',
+                      type: success ? _ToastType.success : _ToastType.error,
+                    );
+                  }
+                },
+              ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.power_settings_new_rounded,
+                  color: _theme.textMuted, size: 20),
+              title: Text('Desconectar', style: TextStyle(color: _theme.textMuted)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _sshConnectionManager.disconnect();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -2011,18 +2183,12 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
         ),
         body: Column(
           children: [
-            // Status da Conexão SSH
-            if (_activeSshSession != null && _isRemoteProject)
-              SshConnectionStatusWidget(
-                connectionManager: _sshConnectionManager,
-                onReconnect: () async {
-                  final success = await _sshConnectionManager.reconnectNow();
-                  if (!mounted) return;
-                  _showToast(
-                    success ? '✅ Reconectado!' : '❌ Erro ao reconectar',
-                  );
-                },
-              ),
+            // Banner de modo offline: projeto remoto sem conexão ativa
+            // (banner sutil substituiu a faixa SSH do topo)
+            if (_isRemoteProject &&
+                _activeSshSession != null &&
+                !(_activeSshSession!.isConnected))
+              _buildOfflineBanner(),
             if (_tabController.hasTabs)
               EditorTabsBar(
                 tabs: _tabController.openTabs,
@@ -2090,6 +2256,11 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
             StatusBar(
               languageName: _languageName,
               hasUnsavedChanges: _activeHasUnsavedChanges,
+              // Mostra o chip SSH na status bar apenas com projeto remoto ativo
+              sshConnectionManager: _isRemoteProject ? _sshConnectionManager : null,
+              onSshTap: _isRemoteProject
+                  ? () => _showSshStatusSheet(context)
+                  : null,
               onTerminalToggle: () {
                 setState(() {
                   _isTerminalVisible = !_isTerminalVisible;

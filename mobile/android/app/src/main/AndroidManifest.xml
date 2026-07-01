@@ -4,6 +4,16 @@
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
+    <!-- Permissões para o Foreground Service (SSH em background) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING" />
+    <!-- Para solicitar remoção da otimização de bateria (mantém SSH ativo) -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- WifiLock: mantém Wi-Fi ativo durante o background -->
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
 
     <application
         android:label="JALIDE"
@@ -38,6 +48,13 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- Foreground Service para manter a sessão SSH ativa em background.
+             Não altere o nome deste serviço. -->
+        <service
+            android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
+            android:foregroundServiceType="dataSync|remoteMessaging"
+            android:stopWithTask="false"
+            android:exported="false" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

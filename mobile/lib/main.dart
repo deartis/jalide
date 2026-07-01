@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:jalide/screens/editor_screen.dart';
+import 'package:jalide/services/ssh_foreground_service.dart';
 import 'package:jalide/theme/jalide_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Inicializa porta de comunicação do Foreground Service (obrigatório antes do runApp)
+  SshForegroundService.initialize();
+
   final initialTheme = await ThemeProvider.loadTheme();
   
   runApp(

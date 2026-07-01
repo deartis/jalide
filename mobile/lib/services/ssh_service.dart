@@ -124,6 +124,9 @@ class SshSession {
           ? () => profile.password!
           : null,
       identities: identities,
+      // Mantém o socket vivo a nível de protocolo SSH.
+      // Essencial para redes móveis que encerram conexões TCP ociosas.
+      keepAliveInterval: const Duration(seconds: 15),
     );
 
     await _client!.authenticated;

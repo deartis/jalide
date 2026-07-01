@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'ssh_foreground_service.dart';
+import 'ssh_session_state_service.dart';
 import 'ssh_service.dart';
 
 /// Gerencia reconexão automática e monitoramento de saúde da conexão SSH
@@ -82,6 +84,12 @@ class SshConnectionManager extends ChangeNotifier {
 
       // Escuta fechamento reativo de conexão
       _listenToConnectionClose(_currentSession!);
+
+      // Inicia o Foreground Service para manter o processo vivo em background
+      await SshForegroundService.start(profile.label);
+
+      // Persiste o estado da sessão para reconexão após reinício do app
+      await SshSessionStateService.save(profileId: profile.id);
 
       debugPrint('✅ SSH conectado com sucesso: ${profile.label}');
       return true;
@@ -290,6 +298,9 @@ class SshConnectionManager extends ChangeNotifier {
     if (session != null) {
       await session.disconnect();
     }
+    // Para o Foreground Service e limpa estado persistido
+    await SshForegroundService.stop();
+    await SshSessionStateService.clear();
     _connectionStateController.add(SshConnectionState.disconnected);
     notifyListeners();
   }
