@@ -23,6 +23,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/file_service.dart';
+import '../utils/file_utils.dart';
 import '../services/ai_service.dart';
 import '../services/ssh_connection_manager.dart';
 import '../services/ssh_foreground_service.dart';
@@ -162,7 +163,6 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
     WidgetsBinding.instance.addObserver(this);
     _initializeAI();
     _initializeSshConnectionManager();
-    _startTermuxSshdIfNeeded();
     // Escuta o botão "Desconectar" da notificação do Foreground Service
     SshForegroundService.addDataCallback(_onForegroundServiceData);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -172,6 +172,11 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
 
   Future<void> _initializeSshConnectionManager() async {
     await _sshConnectionManager.initialize();
+
+    // Garante que o sshd do Termux foi acionado/iniciado antes de tentar reconectar
+    await _startTermuxSshdIfNeeded();
+    // Pequeno delay para dar tempo ao daemon do sshd de inicializar e escutar a porta
+    await Future.delayed(const Duration(milliseconds: 600));
 
     // Tenta reconectar silenciosamente à última sessão SSH ao iniciar o app
     final persistedState = await SshSessionStateService.load();
@@ -193,6 +198,7 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
           if (persistedState.isRemoteProject && persistedState.projectPath != null && mounted) {
             await _loadRemoteProjectFiles(persistedState.projectPath!);
           }
+          await _reloadRemoteTabsContent();
           _showToast('SSH reconectado: ${profile.label}', type: _ToastType.success);
         } else {
           debugPrint('⚠️ Reconexão silenciosa falhou. App inicia em modo local.');
@@ -260,6 +266,7 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
           if (_projectPath != null && _isRemoteProject) {
             await _loadRemoteProjectFiles(_projectPath!);
           }
+          await _reloadRemoteTabsContent();
         } else {
           _showToast('Falha ao reconectar SSH', type: _ToastType.error);
         }
@@ -497,6 +504,30 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
     }
   }
 
+  Future<void> _reloadRemoteTabsContent() async {
+    final session = _activeSshSession;
+    if (session == null || !session.isConnected) return;
+
+    for (int i = 0; i < _tabController.openTabs.length; i++) {
+      final tab = _tabController.openTabs[i];
+      if (tab.isRemote && tab.path != null) {
+        try {
+          debugPrint('🔄 Recarregando conteúdo da aba remota: ${tab.path}');
+          final content = await session.readFile(tab.path!);
+          if (mounted) {
+            setState(() {
+              tab.initialContent = content;
+              tab.controller.text = content;
+              tab.hasUnsavedChanges = false;
+            });
+          }
+        } catch (e) {
+          debugPrint('⚠️ Erro ao recarregar aba remota ${tab.path}: $e');
+        }
+      }
+    }
+  }
+
   // Métodos movidos para EditorTabController:
   // _createController, _getLanguageDisplayName, _createNewTab,
   // _fileName, _languageName, _getInitialLanguageName, _langForPath
@@ -627,9 +658,9 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
       return;
     }
 
-    final physicalActivePath = _resolveSafPath(_activePath!);
+    final physicalActivePath = FileUtils.resolveSafPath(_activePath!);
     final physicalProjectPath = _projectPath != null
-        ? _resolveSafPath(_projectPath!)
+        ? FileUtils.resolveSafPath(_projectPath!)
         : null;
 
     String fileRunPath = '';
@@ -692,45 +723,7 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
     }
   }
 
-  String _resolveSafPath(String safUri) {
-    if (!safUri.startsWith('content://')) return safUri;
-    try {
-      final uri = Uri.parse(safUri);
-      final decodedPath = Uri.decodeComponent(uri.path);
 
-      // Encontra a parte depois de tree/ ou document/ (document/ tem precedência para URIs de arquivos sob pastas)
-      String? treeOrDocPart;
-      final docIndex = decodedPath.indexOf('document/');
-      if (docIndex != -1) {
-        treeOrDocPart = decodedPath.substring(docIndex + 9);
-      } else {
-        final treeIndex = decodedPath.indexOf('tree/');
-        if (treeIndex != -1) {
-          treeOrDocPart = decodedPath.substring(treeIndex + 5);
-        }
-      }
-
-      if (treeOrDocPart != null) {
-        if (treeOrDocPart.startsWith('primary:')) {
-          final relativePath = treeOrDocPart.substring(8);
-          return '/storage/emulated/0/$relativePath';
-        } else if (treeOrDocPart.startsWith('home:')) {
-          final relativePath = treeOrDocPart.substring(5);
-          return '/data/data/com.termux/files/home/$relativePath';
-        } else if (treeOrDocPart.startsWith('usr:')) {
-          final relativePath = treeOrDocPart.substring(4);
-          return '/data/data/com.termux/files/usr/$relativePath';
-        } else if (treeOrDocPart.startsWith('raw:')) {
-          return treeOrDocPart.substring(4);
-        } else if (treeOrDocPart.startsWith('/')) {
-          return treeOrDocPart;
-        }
-      }
-    } catch (e) {
-      debugPrint('Error resolving SAF path: $e');
-    }
-    return safUri;
-  }
 
   Future<void> _openFileFromExplorer(String path) async {
     try {
@@ -1677,7 +1670,7 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
   // ─── Integração Termux ──────────────────────────────────────────────────
   static const _termuxHome = '/data/data/com.termux/files/home';
   static const _jalideWorkspace = '/sdcard/jalide-workspace';
-  static const _termuxChannel = MethodChannel('com.jalide/termux');
+  static const _termuxChannel = FileService.channel;
 
   Future<void> _openTermuxWorkspace() async {
     final pathCtrl = TextEditingController(text: '~/');
@@ -2604,30 +2597,28 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
             'Selecionar Tema',
             style: TextStyle(color: _theme.textPri),
           ),
-          content: RadioGroup<ThemeType>(
-            groupValue: provider.themeType,
-            onChanged: (ThemeType? value) {
-              if (value != null) {
-                provider.setTheme(value);
-                Navigator.pop(context);
-              }
-            },
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: ThemeType.values.map((type) {
-                final label = type == ThemeType.darkPurple
-                    ? 'DARK PURPLE'
-                    : type.name.toUpperCase();
-                return RadioListTile<ThemeType>(
-                  title: Text(
-                    label,
-                    style: TextStyle(color: _theme.textPri, fontSize: 14),
-                  ),
-                  value: type,
-                  activeColor: _theme.accent,
-                );
-              }).toList(),
-            ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: ThemeType.values.map((type) {
+              final label = type == ThemeType.darkPurple
+                  ? 'DARK PURPLE'
+                  : type.name.toUpperCase();
+              return RadioListTile<ThemeType>(
+                title: Text(
+                  label,
+                  style: TextStyle(color: _theme.textPri, fontSize: 14),
+                ),
+                value: type,
+                groupValue: provider.themeType,
+                onChanged: (ThemeType? value) {
+                  if (value != null) {
+                    provider.setTheme(value);
+                    Navigator.pop(context);
+                  }
+                },
+                activeColor: _theme.accent,
+              );
+            }).toList(),
           ),
         );
       },
@@ -2656,11 +2647,12 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
             });
 
             // Registra na sessão do gerenciador
-            _sshConnectionManager.setCurrentSession(session, session.profile);
+            await _sshConnectionManager.setCurrentSession(session, session.profile);
 
             // Ao conectar, pergunta se quer abrir a home remota
             final home = await session.getHomeDir();
             await _loadRemoteProjectFiles(home);
+            await _reloadRemoteTabsContent();
             if (mounted) {
               _scaffoldKey.currentState?.openDrawer();
               _showToast('Conectado! Explorer remoto aberto em $home');

@@ -47,6 +47,8 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
   late PathNavigator _pathNavigator;
   String? _currentPath;
   String? _selectedPath;
+  bool _isSelectedPathDir = true;
+  final Map<String, Future<List<Map<String, dynamic>>>> _expandedDirsCache = {};
 
   @override
   void initState() {
@@ -54,6 +56,7 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
     _pathNavigator = PathNavigator();
     _currentPath = widget.projectPath;
     _selectedPath = widget.projectPath;
+    _isSelectedPathDir = true;
     if (_currentPath != null) {
       _pathNavigator.push(_currentPath!);
     }
@@ -65,21 +68,18 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
         _pathNavigator.push(path);
         _currentPath = path;
         _selectedPath = path;
+        _isSelectedPathDir = true;
       });
       widget.onNavigateFolder(path);
     }
   }
 
-  void _selectFolder(String path) {
-    if (path == _selectedPath) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      setState(() {
-        _selectedPath = path;
-        _currentPath = path;
-        _pathNavigator.push(path);
-      });
-      widget.onNavigateFolder(path);
+
+
+  void _selectFolderInTree(String path) {
+    setState(() {
+      _selectedPath = path;
+      _isSelectedPathDir = true;
     });
   }
 
@@ -412,6 +412,20 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
                         }
                       },
                     ),
+                    if (isDir) ...[
+                      const Divider(height: 1, color: Color(0x1FFFFFFF)),
+                      _buildActionTile(
+                        context,
+                        icon: Icons.folder_open_outlined,
+                        title: 'Navegar',
+                        subtitle: 'Definir esta pasta como raiz do explorador',
+                        accent: theme.accent,
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          _navigateTo(path);
+                        },
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -497,14 +511,74 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
   @override
   void didUpdateWidget(covariant FileExplorerDrawer oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.projectPath != oldWidget.projectPath &&
-        widget.projectPath != null) {
-      if (_currentPath != widget.projectPath) {
+    if (widget.projectPath != oldWidget.projectPath) {
+      _expandedDirsCache.clear();
+      if (widget.projectPath != null && _currentPath != widget.projectPath) {
         _pathNavigator.push(widget.projectPath!);
         _currentPath = widget.projectPath;
         _selectedPath = widget.projectPath;
+        _isSelectedPathDir = true;
       }
+    } else if (widget.projectFiles != oldWidget.projectFiles) {
+      _expandedDirsCache.clear();
     }
+  }
+
+  Future<List<Map<String, dynamic>>> _getDirFuture(String path, bool isRemote, bool isSaf) {
+    return _expandedDirsCache.putIfAbsent(path, () {
+      if (isRemote) {
+        return widget.sshSession
+              ?.listDir(path)
+              .then(
+                (res) => res
+                    .map(
+                      (f) => {
+                        'name': f.name,
+                        'path': f.path,
+                        'isDir': f.isDir,
+                        'isSaf': false,
+                        'isRemote': true,
+                      },
+                    )
+                    .toList(),
+              ) ?? Future.value([]);
+      } else if (isSaf) {
+        return widget.termuxChannel
+              .invokeMethod('listSafDirectory', {'uri': path})
+              .then(
+                (res) => (res as List)
+                    .map(
+                      (f) => {
+                        'name': f['name'] as String,
+                        'path': f['uri'] as String,
+                        'isDir': f['isDir'] as bool,
+                        'isSaf': true,
+                        'isRemote': false,
+                      },
+                    )
+                    .toList(),
+              );
+      } else {
+        return Directory(path).list().toList().then((list) {
+          list.sort((a, b) {
+            if (a is Directory && b is! Directory) return -1;
+            if (a is! Directory && b is Directory) return 1;
+            return a.path.compareTo(b.path);
+          });
+          return list
+              .map(
+                (e) => {
+                  'name': p.basename(e.path),
+                  'path': e.path,
+                  'isDir': e is Directory,
+                  'isSaf': false,
+                  'isRemote': false,
+                },
+              )
+              .toList();
+        });
+      }
+    });
   }
 
   void _goBack() {
@@ -627,7 +701,14 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
                   children: [
                     if (widget.projectPath != null) ...[
                       IconButton(
-                        onPressed: () => widget.onCreateFile(_selectedPath),
+                        onPressed: () {
+                          final targetPath = _isSelectedPathDir
+                              ? _selectedPath
+                              : (widget.isRemoteProject
+                                  ? p.posix.dirname(_selectedPath!)
+                                  : p.dirname(_selectedPath!));
+                          widget.onCreateFile(targetPath);
+                        },
                         icon: Icon(
                           Icons.note_add_outlined,
                           color: theme.textMuted,
@@ -639,7 +720,14 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
                       ),
                       const SizedBox(width: 8),
                       IconButton(
-                        onPressed: () => widget.onCreateFolder(_selectedPath),
+                        onPressed: () {
+                          final targetPath = _isSelectedPathDir
+                              ? _selectedPath
+                              : (widget.isRemoteProject
+                                  ? p.posix.dirname(_selectedPath!)
+                                  : p.dirname(_selectedPath!));
+                          widget.onCreateFolder(targetPath);
+                        },
                         icon: Icon(
                           Icons.create_new_folder_outlined,
                           color: theme.textMuted,
@@ -947,9 +1035,12 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
         child: ExpansionTile(
           key: PageStorageKey(path),
           tilePadding: const EdgeInsets.symmetric(horizontal: 16),
-          leading: Icon(Icons.folder_rounded, color: theme.accent, size: 18),
+          controlAffinity: ListTileControlAffinity.leading,
+          iconColor: theme.accent,
+          collapsedIconColor: theme.textMuted,
+          childrenPadding: const EdgeInsets.only(left: 12),
           title: InkWell(
-            onTap: () => _selectFolder(path),
+            onTap: () => _selectFolderInTree(path),
             onLongPress: () => _showItemActions(
               path: path,
               isDir: true,
@@ -965,77 +1056,31 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
                       borderRadius: BorderRadius.circular(4),
                     )
                   : null,
-              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
-              child: Text(
-                name,
-                style: TextStyle(
-                  color: theme.textPri,
-                  fontSize: 13,
-                  fontFamily: 'sans-serif',
-                ),
+              padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+              child: Row(
+                children: [
+                  Icon(Icons.folder_rounded, color: theme.accent, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      name,
+                      style: TextStyle(
+                        color: theme.textPri,
+                        fontSize: 13,
+                        fontFamily: 'sans-serif',
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
           onExpansionChanged: (expanded) {
-            if (expanded) {
-              _selectFolder(path);
-            }
+            _selectFolderInTree(path);
           },
-          iconColor: theme.accent,
-          collapsedIconColor: theme.textMuted,
-          childrenPadding: const EdgeInsets.only(left: 12),
           children: [
             FutureBuilder<List<Map<String, dynamic>>>(
-              future: isRemote
-                  ? widget.sshSession
-                        ?.listDir(path)
-                        .then(
-                          (res) => res
-                              .map(
-                                (f) => {
-                                  'name': f.name,
-                                  'path': f.path,
-                                  'isDir': f.isDir,
-                                  'isSaf': false,
-                                  'isRemote': true,
-                                },
-                              )
-                              .toList(),
-                        )
-                  : isSaf
-                  ? widget.termuxChannel
-                        .invokeMethod('listSafDirectory', {'uri': path})
-                        .then(
-                          (res) => (res as List)
-                              .map(
-                                (f) => {
-                                  'name': f['name'] as String,
-                                  'path': f['uri'] as String,
-                                  'isDir': f['isDir'] as bool,
-                                  'isSaf': true,
-                                  'isRemote': false,
-                                },
-                              )
-                              .toList(),
-                        )
-                  : Directory(path).list().toList().then((list) {
-                      list.sort((a, b) {
-                        if (a is Directory && b is! Directory) return -1;
-                        if (a is! Directory && b is Directory) return 1;
-                        return a.path.compareTo(b.path);
-                      });
-                      return list
-                          .map(
-                            (e) => {
-                              'name': p.basename(e.path),
-                              'path': e.path,
-                              'isDir': e is Directory,
-                              'isSaf': false,
-                              'isRemote': false,
-                            },
-                          )
-                          .toList();
-                    }),
+              future: _getDirFuture(path, isRemote, isSaf),
               builder: (context, snapshot) {
                 if (!snapshot.hasData) {
                   return Padding(
@@ -1064,29 +1109,44 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
       );
     }
 
-    return ListTile(
-      dense: true,
-      contentPadding: const EdgeInsets.only(left: 16, right: 16),
-      leading: Icon(
-        FileUtils.iconForFile(name),
-        color: FileUtils.colorForFile(name, theme: theme),
-        size: 18,
-      ),
-      title: Text(
-        name,
-        style: TextStyle(
-          color: theme.textPri,
-          fontSize: 13,
-          fontFamily: 'monospace',
+    final isSelected = path == _selectedPath;
+    return Container(
+      decoration: isSelected
+          ? BoxDecoration(
+              color: theme.accent.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(4),
+            )
+          : null,
+      child: ListTile(
+        dense: true,
+        contentPadding: const EdgeInsets.only(left: 16, right: 16),
+        leading: Icon(
+          FileUtils.iconForFile(name),
+          color: FileUtils.colorForFile(name, theme: theme),
+          size: 18,
         ),
-      ),
-      onTap: () => widget.onFileTap(path),
-      onLongPress: () => _showItemActions(
-        path: path,
-        isDir: false,
-        isRemote: isRemote,
-        isSaf: isSaf,
-        label: name,
+        title: Text(
+          name,
+          style: TextStyle(
+            color: theme.textPri,
+            fontSize: 13,
+            fontFamily: 'monospace',
+          ),
+        ),
+        onTap: () {
+          setState(() {
+            _selectedPath = path;
+            _isSelectedPathDir = false;
+          });
+          widget.onFileTap(path);
+        },
+        onLongPress: () => _showItemActions(
+          path: path,
+          isDir: false,
+          isRemote: isRemote,
+          isSaf: isSaf,
+          label: name,
+        ),
       ),
     );
   }

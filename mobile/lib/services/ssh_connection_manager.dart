@@ -106,13 +106,15 @@ class SshConnectionManager extends ChangeNotifier {
   }
 
   /// Define a sessão atual (útil para integração com editor_screen)
-  void setCurrentSession(SshSession? session, SshProfile? profile) {
+  Future<void> setCurrentSession(SshSession? session, SshProfile? profile) async {
     _currentSession = session;
     _lastSuccessfulProfile = profile;
     if (session != null && profile != null) {
-      _saveLastSession(profile.id);
+      await _saveLastSession(profile.id);
       _startHealthCheck();
       _listenToConnectionClose(session);
+      await SshForegroundService.start(profile.label);
+      await SshSessionStateService.save(profileId: profile.id);
     }
   }
 

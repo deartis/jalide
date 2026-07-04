@@ -2,12 +2,12 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 
 abstract class FileService {
-  static const _channel = MethodChannel('com.jalide/termux');
+  static const channel = MethodChannel('com.jalide/termux');
 
   static Future<String> readFile(String path) async {
     try {
       if (path.startsWith('content://')) {
-        final String content = await _channel.invokeMethod('readSafFile', {'uri': path});
+        final String content = await channel.invokeMethod('readSafFile', {'uri': path});
         return content;
       }
       final file = File(path);
@@ -20,7 +20,7 @@ abstract class FileService {
   static Future<void> saveFile(String path, String content) async {
     try {
       if (path.startsWith('content://')) {
-        await _channel.invokeMethod('writeSafFile', {
+        await channel.invokeMethod('writeSafFile', {
           'uri': path,
           'content': content,
         });

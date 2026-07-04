@@ -73,8 +73,10 @@ class SshSessionStateService {
       final prefs = await SharedPreferences.getInstance();
       if (projectPath != null) {
         await prefs.setString(_keyProjectPath, projectPath);
+        await prefs.setBool(_keyIsRemote, true);
       } else {
         await prefs.remove(_keyProjectPath);
+        await prefs.setBool(_keyIsRemote, false);
       }
     } catch (e) {
       debugPrint('⚠️ Erro ao atualizar project path no estado SSH: $e');

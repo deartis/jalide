@@ -270,18 +270,19 @@ class SshSession {
     _stdoutSubscription?.cancel();
     _stderrSubscription?.cancel();
     await _outputController?.close();
+    await _inputSink?.close();
     _shellSession?.close();
     _sftp?.close();
     _client?.close();
     state = SshConnectionState.disconnected;
     _stdoutSubscription = null;
     _stderrSubscription = null;
+    _inputSink = null;
     _sftp = null;
     _sftpFuture = null;
     _shellSession = null;
     _client = null;
     _outputController = null;
-    _inputSink = null;
   }
 }
 

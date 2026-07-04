@@ -68,4 +68,44 @@ class FileUtils {
     }
     return uppercase ? name.toUpperCase() : name;
   }
+
+  static String resolveSafPath(String safUri) {
+    if (!safUri.startsWith('content://')) return safUri;
+    try {
+      final uri = Uri.parse(safUri);
+      final decodedPath = Uri.decodeComponent(uri.path);
+
+      // Encontra a parte depois de tree/ ou document/ (document/ tem precedência para URIs de arquivos sob pastas)
+      String? treeOrDocPart;
+      final docIndex = decodedPath.indexOf('document/');
+      if (docIndex != -1) {
+        treeOrDocPart = decodedPath.substring(docIndex + 9);
+      } else {
+        final treeIndex = decodedPath.indexOf('tree/');
+        if (treeIndex != -1) {
+          treeOrDocPart = decodedPath.substring(treeIndex + 5);
+        }
+      }
+
+      if (treeOrDocPart != null) {
+        if (treeOrDocPart.startsWith('primary:')) {
+          final relativePath = treeOrDocPart.substring(8);
+          return '/storage/emulated/0/$relativePath';
+        } else if (treeOrDocPart.startsWith('home:')) {
+          final relativePath = treeOrDocPart.substring(5);
+          return '/data/data/com.termux/files/home/$relativePath';
+        } else if (treeOrDocPart.startsWith('usr:')) {
+          final relativePath = treeOrDocPart.substring(4);
+          return '/data/data/com.termux/files/usr/$relativePath';
+        } else if (treeOrDocPart.startsWith('raw:')) {
+          return treeOrDocPart.substring(4);
+        } else if (treeOrDocPart.startsWith('/')) {
+          return treeOrDocPart;
+        }
+      }
+    } catch (e) {
+      debugPrint('Error resolving SAF path: $e');
+    }
+    return safUri;
+  }
 }

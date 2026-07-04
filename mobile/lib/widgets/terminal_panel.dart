@@ -10,6 +10,8 @@ import 'package:xterm/xterm.dart';
 
 import '../services/ssh_service.dart';
 import '../theme/jalide_theme.dart';
+import '../services/file_service.dart';
+import '../utils/file_utils.dart';
 
 // ─── Enum de Modo do Terminal ────────────────────────────────────────────────
 
@@ -92,7 +94,7 @@ class TerminalPanelState extends State<TerminalPanel> {
         if (widget.mode == TerminalMode.local) {
           var workingDir = updatedPath;
           if (workingDir.startsWith('content://')) {
-            workingDir = _resolveSafPath(workingDir);
+            workingDir = FileUtils.resolveSafPath(workingDir);
           }
           _localPty?.write(
             utf8.encode('cd "${workingDir.replaceAll('"', '\\"')}"\n'),
@@ -132,7 +134,7 @@ class TerminalPanelState extends State<TerminalPanel> {
 
     String workingDir = widget.projectPath ?? '';
     if (workingDir.startsWith('content://')) {
-      workingDir = _resolveSafPath(workingDir);
+      workingDir = FileUtils.resolveSafPath(workingDir);
     }
     if (workingDir.isEmpty || !Directory(workingDir).existsSync()) {
       final docDir = await getApplicationDocumentsDirectory();
@@ -198,7 +200,7 @@ class TerminalPanelState extends State<TerminalPanel> {
     if (widget.projectPath != null && widget.projectPath!.isNotEmpty) {
       String remotePath = widget.projectPath!;
       if (remotePath.startsWith('content://')) {
-        remotePath = _resolveSafPath(remotePath);
+        remotePath = FileUtils.resolveSafPath(remotePath);
       }
       Future.delayed(const Duration(milliseconds: 600), () {
         session.writeToShell('cd "$remotePath"\n');
@@ -248,7 +250,7 @@ class TerminalPanelState extends State<TerminalPanel> {
         "pkg update -y && pkg install -y openssh nodejs git && termux-setup-storage && echo 'allow-external-apps = true' >> ~/.termux/termux.properties && sshd && echo '\\n\\e[1;32m[JALIDE] Digite uma senha para o SSH:\\e[0m' && passwd && echo '\\n\\e[1;34m[JALIDE] Seu usuario SSH e:\\e[0m' && whoami";
 
     try {
-      final channel = MethodChannel('com.jalide/termux');
+      final channel = FileService.channel;
       await channel.invokeMethod('runTermuxCommand', {'script': setupScript});
 
       if (!mounted) return;
@@ -649,43 +651,4 @@ class TerminalPanelState extends State<TerminalPanel> {
     );
   }
 
-  String _resolveSafPath(String safUri) {
-    if (!safUri.startsWith('content://')) return safUri;
-    try {
-      final uri = Uri.parse(safUri);
-      final decodedPath = Uri.decodeComponent(uri.path);
-
-      // Encontra a parte depois de tree/ ou document/
-      String? treeOrDocPart;
-      final treeIndex = decodedPath.indexOf('tree/');
-      if (treeIndex != -1) {
-        treeOrDocPart = decodedPath.substring(treeIndex + 5);
-      } else {
-        final docIndex = decodedPath.indexOf('document/');
-        if (docIndex != -1) {
-          treeOrDocPart = decodedPath.substring(docIndex + 9);
-        }
-      }
-
-      if (treeOrDocPart != null) {
-        if (treeOrDocPart.startsWith('primary:')) {
-          final relativePath = treeOrDocPart.substring(8);
-          return '/storage/emulated/0/$relativePath';
-        } else if (treeOrDocPart.startsWith('home:')) {
-          final relativePath = treeOrDocPart.substring(5);
-          return '/data/data/com.termux/files/home/$relativePath';
-        } else if (treeOrDocPart.startsWith('usr:')) {
-          final relativePath = treeOrDocPart.substring(4);
-          return '/data/data/com.termux/files/usr/$relativePath';
-        } else if (treeOrDocPart.startsWith('raw:')) {
-          return treeOrDocPart.substring(4);
-        } else if (treeOrDocPart.startsWith('/')) {
-          return treeOrDocPart;
-        }
-      }
-    } catch (e) {
-      debugPrint('Error resolving SAF path: $e');
-    }
-    return safUri;
-  }
 }
