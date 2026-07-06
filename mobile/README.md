@@ -31,24 +31,37 @@ JALIDE é uma IDE móvel moderna e poderosa desenvolvida em Flutter, com suporte
 | 💾 | **Auto-Save Background** | Salvamento automático silencioso (com debounce de 1.5s) e ao trocar de abas no editor |
 | 🐚 | **Terminal híbrido** | Alterne entre terminal local (Android) e remoto via SSH |
 | ⚡ | **Termux Magic** | Configura Node.js + SSH no Termux com um clique |
-| 📂 | **SFTP nativo** | Edite arquivos remotos como se fossem locais |
+| 📂 | **Árvore de Pastas & SFTP** | Árvore de diretórios estilo VS Code (expansão in-place), cache anti-crash e edição remota via SFTP |
 | 🔐 | **Gestor de perfis SSH (melhorado)** | Credenciais seguras, testar conexão, indicador de status (ONLINE/OFFLINE), desconectar com um clique |
 | 🎹 | **Teclado auxiliar** | Atalhos `{}` `[]` `=>` otimizados para telas pequenas |
 
 ---
 
-## 🎯 O que há de novo (v0.1.0+4)
+## 🎯 O que há de novo (v0.1.0+6)
 
-### 🤖 Autocomplete Inteligente
-- **Sugestões por linguagem** — Quando você abre um arquivo JavaScript, o editor sugere `console`, `fetch`, `async`. Para Python, `print`, `import`, `json`. Automaticamente!
-- **Como funciona:** Abra um arquivo `.js`, `.py`, `.dart`, `.cpp` ou qualquer um dos 8+ idiomas suportados — as sugestões mudam na hora.
-- **Digite e veja:** Conforme você digita, sugestões relevantes aparecem (como no VSCode).
+### 📂 Árvore de Diretórios Estilo VS Code
+- **Expansão In-place com Seta na Esquerda** — Pastas do explorador agora contam com setinhas de expansão no lado esquerdo. Você pode clicar e expandir estruturas profundas sem sair da raiz atual do projeto.
+- **Cache Anti-Crash (Sem Conflito SSH)** — Implementado cache inteligente de leitura de pastas. Isso evita loops de carregamento redundantes no Drawer durante a digitação e elimina travamentos (ANRs) em conexões SSH remotas.
+- **Destaque e Criação de Arquivos Contextual** — O arquivo ou pasta selecionada é destacado visualmente. A criação de novos arquivos/pastas resolve automaticamente para o diretório pai do arquivo selecionado.
+- **Opção de Navegar Raiz** — Pressione e segure qualquer pasta (long-press) e selecione "Navegar" para redefinir aquela pasta como a raiz atual do explorador.
 
-### 🔐 SSH Melhorado
-- **Testar conexão** — Botão para verificar se o servidor está respondendo antes de trabalhar.
-- **Status em tempo real** — Indicador `🟢 ONLINE` ou `🔴 OFFLINE` próximo a cada perfil salvo.
-- **Desconectar com 1 clique** — Encerra a sessão SSH quando terminar (libera recursos).
-- **Memory-safe** — Sem memory leaks ao deletar perfis ou desconectar.
+### 🤖 Integração com IA (Google Gemma) (v0.1.0+5)
+- **Assistente IA Gratuito** — Tire dúvidas, peça sugestões ou gere códigos conversando com a IA usando a Chave de API do Google AI Studio.
+- **Sugestões Contextuais (Ghost Suggestions)** — IA analisando seu código em tempo real e oferecendo sugestões (ativável nas configurações).
+- **Sem Limites Ocultos** — O aplicativo conecta diretamente ao seu provedor, então não há custos ou taxas escondidas!
+
+### 🧹 Auto-Format Offline (v0.1.0+5)
+- **Formatação de Código Sem IA** — Mantendo a essência do "máximo grátis", implementamos um formatador embutido para limpar recuos e espaços.
+- **Auto-Format on Save** — Opção para formatar o código magicamente toda vez que você salvar.
+
+### 📱 Experiência Mobile Melhorada (v0.1.0+5)
+- **Seleção de Texto Inteligente** — Corrigido o comportamento do toque; agora toques curtos apenas movem o cursor, evitando menus de seleção indesejados. Segure o dedo para ativar a seleção de texto.
+
+---
+
+## 🎯 Na versão anterior (v0.1.0+4)
+- **Sugestões por linguagem** — Autocomplete automático que muda de acordo com o arquivo aberto (JS, Python, Dart, C/C++).
+- **SSH Estabilizado** — Teste de conexão, status online/offline em tempo real e desconexão segura de 1 clique sem vazamentos de memória.
 
 ---
 
