@@ -106,6 +106,8 @@ class EditorTabController extends ChangeNotifier {
     final controller = tab.controller;
     final focusNode = tab.focusNode;
 
+    tab.history.dispose();
+
     _openTabs.removeAt(index);
     if (_activeTabIndex == index) {
       _activeTabIndex = _openTabs.isNotEmpty ? (index > 0 ? index - 1 : 0) : -1;
@@ -152,6 +154,41 @@ class EditorTabController extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ─── Undo / Redo Operations ───────────────────────────────────────────────
+
+  void forceRecordActiveTabHistory() {
+    final tab = activeTab;
+    if (tab != null) {
+      tab.history.forceRecord(tab.controller.value);
+    }
+  }
+
+  void undoActiveTab() {
+    final tab = activeTab;
+    if (tab == null) return;
+
+    final currentValue = tab.controller.value;
+    tab.history.isExecutingUndoRedo = true;
+    final previous = tab.history.undo(currentValue);
+    if (previous != null) {
+      tab.controller.value = previous;
+    }
+    tab.history.isExecutingUndoRedo = false;
+  }
+
+  void redoActiveTab() {
+    final tab = activeTab;
+    if (tab == null) return;
+
+    final currentValue = tab.controller.value;
+    tab.history.isExecutingUndoRedo = true;
+    final next = tab.history.redo(currentValue);
+    if (next != null) {
+      tab.controller.value = next;
+    }
+    tab.history.isExecutingUndoRedo = false;
+  }
+
   // ─── Controller Creation ──────────────────────────────────────────────────
 
   CodeController _createController(
@@ -181,6 +218,8 @@ class EditorTabController extends ChangeNotifier {
     controller.addListener(() {
       final tabIndex = _openTabs.indexOf(tab);
       if (tabIndex == -1) return;
+
+      tab.history.record(controller.value);
 
       final initial = tab.initialContent;
       final isChanged = controller.text != initial;

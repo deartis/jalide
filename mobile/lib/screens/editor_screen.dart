@@ -956,6 +956,7 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
 
   void _insertSnippet(String snippet) {
     if (_tabController.activeTabIndex == -1) return;
+    _tabController.forceRecordActiveTabHistory();
     final text = _activeController!.text;
     final sel = _activeController!.selection;
 
@@ -1097,23 +1098,9 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
     setState(() => _ctrlActive = false);
 
     if (key.startsWith('Z')) {
-      try {
-        (_activeController as dynamic).undo();
-      } catch (_) {
-        Actions.maybeInvoke<UndoTextIntent>(
-          context,
-          const UndoTextIntent(SelectionChangedCause.keyboard),
-        );
-      }
+      _tabController.undoActiveTab();
     } else if (key.startsWith('Y')) {
-      try {
-        (_activeController as dynamic).redo();
-      } catch (_) {
-        Actions.maybeInvoke<RedoTextIntent>(
-          context,
-          const RedoTextIntent(SelectionChangedCause.keyboard),
-        );
-      }
+      _tabController.redoActiveTab();
     } else if (key.startsWith('A')) {
       _activeController!.selection = TextSelection(
         baseOffset: 0,
@@ -1144,6 +1131,7 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
   }
 
   void _pasteFromClipboard() {
+    _tabController.forceRecordActiveTabHistory();
     Clipboard.getData(Clipboard.kTextPlain).then((data) {
       if (data?.text != null) {
         final text = _activeController!.text;
@@ -1166,6 +1154,7 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
   void _cutSelection() {
     final sel = _activeController!.selection;
     if (sel.isValid && !sel.isCollapsed) {
+      _tabController.forceRecordActiveTabHistory();
       final text = _activeController!.text;
       Clipboard.setData(
         ClipboardData(text: text.substring(sel.start, sel.end)),
@@ -1179,6 +1168,7 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
   }
 
   void _duplicateLine() {
+    _tabController.forceRecordActiveTabHistory();
     final text = _activeController!.text;
     final sel = _activeController!.selection;
     if (sel.isValid) {
@@ -1297,6 +1287,7 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
   void _handleBackspace() {
     final sel = _activeController!.selection;
     if (sel.isValid) {
+      _tabController.forceRecordActiveTabHistory();
       final text = _activeController!.text;
       if (!sel.isCollapsed) {
         _activeController!.value = _activeController!.value.copyWith(
@@ -1393,6 +1384,7 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
       final formatted = CodeFormatter.format(text, lang);
 
       if (formatted != text) {
+        _tabController.forceRecordActiveTabHistory();
         final selection = controller.selection;
         controller.value = controller.value.copyWith(
           text: formatted,
