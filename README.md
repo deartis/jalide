@@ -31,13 +31,19 @@ JALIDE é uma IDE móvel moderna e poderosa desenvolvida em Flutter, com suporte
 | 💾 | **Auto-Save Background** | Salvamento automático silencioso (com debounce de 1.5s) e ao trocar de abas no editor |
 | 🐚 | **Terminal híbrido** | Alterne entre terminal local (Android) e remoto via SSH |
 | ⚡ | **Termux Magic** | Configura Node.js + SSH no Termux com um clique |
-| 📂 | **SFTP nativo** | Edite arquivos remotos como se fossem locais |
+| 📂 | **Árvore de Pastas & SFTP** | Árvore de diretórios estilo VS Code (expansão in-place), cache anti-crash e edição remota via SFTP |
 | 🔐 | **Gestor de perfis SSH (melhorado)** | Credenciais seguras, testar conexão, indicador de status (ONLINE/OFFLINE), desconectar com um clique |
 | 🎹 | **Teclado auxiliar** | Atalhos `{}` `[]` `=>` otimizados para telas pequenas |
 
 ---
 
-## 🎯 O que há de novo (v0.1.0+5)
+## 🎯 O que há de novo (v0.1.0+6)
+
+### 📂 Árvore de Diretórios Estilo VS Code
+- **Expansão In-place com Seta na Esquerda** — Pastas do explorador agora contam com setinhas de expansão no lado esquerdo. Você pode clicar e expandir estruturas profundas sem sair da raiz atual do projeto.
+- **Cache Anti-Crash (Sem Conflito SSH)** — Implementado cache inteligente de leitura de pastas. Isso evita loops de carregamento redundantes no Drawer durante a digitação e elimina travamentos (ANRs) em conexões SSH remotas.
+- **Destaque e Criação de Arquivos Contextual** — O arquivo ou pasta selecionada é destacado visualmente. A criação de novos arquivos/pastas resolve automaticamente para o diretório pai do arquivo selecionado.
+- **Opção de Navegar Raiz** — Pressione e segure qualquer pasta (long-press) e selecione "Navegar" para redefinir aquela pasta como a raiz atual do explorador.
 
 ### 🤖 Integração com IA (Google Gemma)
 - **Assistente IA Gratuito** — Tire dúvidas, peça sugestões ou gere códigos conversando com a IA usando a Chave de API do Google AI Studio.
@@ -46,12 +52,15 @@ JALIDE é uma IDE móvel moderna e poderosa desenvolvida em Flutter, com suporte
 
 ### 🧹 Auto-Format Offline
 - **Formatação de Código Sem IA** — Mantendo a essência do "máximo grátis", implementamos um formatador embutido para limpar recuos e espaços.
-- **Auto-Format on Save** — Option para formatar o código magicamente toda vez que você salvar.
+- **Auto-Format on Save** — Opção para formatar o código magicamente toda vez que você salvar.
 
 ### 📱 Experiência Mobile Melhorada
 - **Seleção de Texto Inteligente** — Corrigido o comportamento do toque; agora toques curtos apenas movem o cursor, evitando menus de seleção indesejados. Segure o dedo para ativar a seleção de texto.
 
 ---
+
+## 🎯 Na versão anterior (v0.1.0+5)
+- Todos os recursos de Auto-Format, IA (Google Gemma), melhoria de Seleção de Texto e estabilização móvel.
 
 ## 🎯 Na versão anterior (v0.1.0+4)
 
