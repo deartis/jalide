@@ -962,7 +962,7 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
 
     // Proteção contra seleção inválida
     if (!sel.isValid) {
-      final insert = snippet.replaceAll(' ', '');
+      final insert = snippet == '  ' ? '  ' : snippet.replaceAll(' ', '');
       _activeController!.text = text + insert;
       return;
     }
@@ -983,17 +983,19 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
       '( )': '()',
       '" "': '""',
       "' '": "''",
+      '` `': '``',
+      '  ': '  ',
     };
 
     final insert = pairs[snippet] ?? snippet.replaceAll(' ', '');
     _activeController!.text = before + insert + after;
 
-    // Posiciona o cursor no meio dos blocos/aspas
+    // Posiciona o cursor no meio dos blocos/aspas/crases
     int offset = sel.start + insert.length;
     if (snippet == '{ }' || snippet == '[ ]') {
       offset =
           sel.start + insert.indexOf('\n$innerIndent') + 1 + innerIndent.length;
-    } else if (snippet == '( )' || snippet == '" "' || snippet == "' '") {
+    } else if (snippet == '( )' || snippet == '" "' || snippet == "' '" || snippet == '` `') {
       offset = sel.start + 1;
     }
 
@@ -1224,7 +1226,7 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
         break;
       case 'ESC':
         _activeFocusNode!.unfocus();
-        break;
+        return;
       default:
         _insertSnippet(key);
     }
