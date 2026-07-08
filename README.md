@@ -19,9 +19,16 @@
 
 JALIDE é uma IDE móvel moderna e poderosa desenvolvida em Flutter, com suporte **multi-linguagem** (JavaScript, Python, Dart, C, C++ e Shell Script). Ela foi projetada para transformar seu Android em um ambiente de desenvolvimento robusto, ideal para quando você está em trânsito ou tem apenas o celular à mão — sem abrir mão de produtividade e recursos avançados.
 
+📖 **Consulte a [Documentação de Funcionalidades](docs/funcionalidades.md) para saber mais sobre a arquitetura técnica e detalhes de uso.**
+
+
 ---
 
 ## ✨ Funcionalidades
+
+> [!NOTE]
+> Para uma análise técnica detalhada da arquitetura e comportamento de cada recurso, consulte a **[Documentação de Funcionalidades](docs/funcionalidades.md)**.
+
 
 | | Funcionalidade | Descrição |
 |---|---|---|
@@ -37,7 +44,18 @@ JALIDE é uma IDE móvel moderna e poderosa desenvolvida em Flutter, com suporte
 
 ---
 
-## 🎯 O que há de novo (v0.1.0+6)
+## 🎯 O que há de novo (v1.0.1)
+
+### 📄 Nova Documentação Oficial
+- **Arquitetura & Recursos Detalhados** — Lançamento do guia técnico e manual do usuário completo em `docs/funcionalidades.md`, detalhando o fluxo de abas, atalhos, SSH e IA.
+
+### 🔐 Conexão SSH mais Estável e Resiliente
+- **Monitoramento por Heartbeat** — Envio automático de pings a cada 30 segundos para manter o canal ativo.
+- **Reconexão Inteligente** — Tentativa automática de reconexão de até 5 vezes com atraso incremental (backoff exponencial) para redes móveis instáveis.
+
+---
+
+## 🎯 Na versão anterior (v0.1.0+6)
 
 ### 📂 Árvore de Diretórios Estilo VS Code
 - **Expansão In-place com Seta na Esquerda** — Pastas do explorador agora contam com setinhas de expansão no lado esquerdo. Você pode clicar e expandir estruturas profundas sem sair da raiz atual do projeto.
