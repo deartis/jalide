@@ -368,14 +368,18 @@ class _SystemBubble extends StatelessWidget {
       child: Row(
         children: [
           Expanded(child: Divider(color: theme.border, height: 1)),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            child: Text(
-              text,
-              style: TextStyle(
-                color: theme.textMuted,
-                fontSize: 10,
-                letterSpacing: 0.3,
+          Flexible(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              child: Text(
+                text,
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+                style: TextStyle(
+                  color: theme.textMuted,
+                  fontSize: 10,
+                  letterSpacing: 0.3,
+                ),
               ),
             ),
           ),

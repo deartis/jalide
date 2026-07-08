@@ -103,6 +103,7 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
   bool _ghostSuggestionsEnabled = true;
   bool _autoFormatOnSave = false;
   Timer? _autoSaveTimer;
+  bool _isFormatting = false; // Guard contra loop de auto-save durante formatação
 
   // Teclado auxiliar
   bool _ctrlActive = false;
@@ -145,6 +146,8 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
       if (mounted) setState(() {});
     };
     _tabController.onAutoSaveTriggered = (index) {
+      // Ignora mudanças causadas pelo próprio _formatCode para evitar loop
+      if (_isFormatting) return;
       if (_autoSaveEnabled && mounted && index < _tabController.openTabs.length) {
         final tab = _tabController.openTabs[index];
         if (tab.hasUnsavedChanges) {
@@ -899,14 +902,19 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
       final tabIndex = _tabController.openTabs.indexOf(tab);
       if (tabIndex != -1 && tab.hasUnsavedChanges && tab.path != null) {
         final path = tab.path!;
-        final controller = tab.controller;
         final isRemote = tab.isRemote;
 
+        // Formata primeiro; _isFormatting suprime o loop de auto-save
         if (_autoFormatOnSave && tabIndex == _tabController.activeTabIndex) {
           _formatCode(silent: true);
+          // Aguarda o frame para que controller.text reflita o texto formatado
+          await Future.microtask(() {});
+          if (!mounted) return;
         }
 
-        final future = _writeFileContent(path, controller.text, isRemote);
+        // Lê o texto DEPOIS da formatação
+        final text = tab.controller.text;
+        final future = _writeFileContent(path, text, isRemote);
         _currentSave = future;
         try {
           await future;
@@ -929,22 +937,26 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
       }
 
       final path = tab.path!;
-      final controller = tab.controller;
       final isRemote = tab.isRemote;
 
       final tabIndex = _tabController.openTabs.indexOf(tab);
       if (_autoFormatOnSave && tabIndex != -1 && tabIndex == _tabController.activeTabIndex) {
         _formatCode(silent: true);
+        // Aguarda o frame para que controller.text reflita o texto formatado
+        await Future.microtask(() {});
+        if (!mounted) return;
       }
 
-      final future = _writeFileContent(path, controller.text, isRemote);
+      // Lê o texto DEPOIS da formatação
+      final text = tab.controller.text;
+      final future = _writeFileContent(path, text, isRemote);
       _currentSave = future;
       try {
         await future;
         if (!mounted) return;
-        final tabIndex = _tabController.openTabs.indexOf(tab);
-        if (tabIndex != -1) {
-          _tabController.markTabSaved(tabIndex);
+        final currentTabIndex = _tabController.openTabs.indexOf(tab);
+        if (currentTabIndex != -1) {
+          _tabController.markTabSaved(currentTabIndex);
         }
       } catch (e) {
         debugPrint('Instant save error: $e');
@@ -1397,6 +1409,8 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
       if (formatted != text) {
         _tabController.forceRecordActiveTabHistory();
         final selection = controller.selection;
+        // Sinaliza que estamos formatando para suprimir o loop de auto-save
+        _isFormatting = true;
         controller.value = controller.value.copyWith(
           text: formatted,
           selection: selection.isValid
@@ -1405,6 +1419,7 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
                 )
               : const TextSelection.collapsed(offset: -1),
         );
+        _isFormatting = false;
         if (!silent) {
           _showToast('Código formatado com sucesso', type: _ToastType.success);
         }
@@ -1414,6 +1429,7 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
         }
       }
     } catch (e) {
+      _isFormatting = false; // Garante reset mesmo em caso de erro
       if (!silent) {
         _showToast('Erro ao formatar: $e', type: _ToastType.error);
       }
