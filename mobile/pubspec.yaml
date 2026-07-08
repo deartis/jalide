@@ -28,6 +28,8 @@ dependencies:
   http: ^1.2.1
   # Google Generative AI (Gemma)
   google_generative_ai: ^0.4.0
+  # Renderização de Markdown nas respostas da IA
+  flutter_markdown: ^0.7.4
   flutter_foreground_task: ^9.2.2
 
 dev_dependencies:

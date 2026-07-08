@@ -1,45 +1,47 @@
-# 🚀 JALIDE v0.1.0 - IDE Mobile Multilinguagem 🎉
+# 🚀 JALIDE v1.0.0 - IDE Mobile Multilinguagem 🎉
 
-Transforme o seu dispositivo Android em uma estação de desenvolvimento completa e profissional! O **JALIDE** é uma IDE leve, veloz e elegante projetada especialmente para desenvolvedores que desejam codar, testar e executar projetos diretamente do celular com total integração local e remota.
+Transforme o seu dispositivo Android em uma estação de desenvolvimento completa e profissional! Chegamos à **versão oficial 1.0.0**! O **JALIDE** agora é uma solução estável e pronta para produção, trazendo recursos avançados de conectividade em segundo plano, restauração de workspace inteligente, inteligência artificial integrada e melhorias gigantescas de usabilidade para quem programa diretamente pelo celular.
 
 ---
 
-## ✨ Recursos Principais
+## ✨ Recursos Principais & Novidades da v1.0.0
 
-### 🐍 1. Execução Multi-Linguagem com Play Inteligente (▶️)
-Escreva seus códigos e execute-os com apenas um clique! O JALIDE detecta a linguagem ativa e dispara a execução direta no terminal para:
-* **JavaScript / Node.js** (`node "./arquivo.js"`)
-* **Python** (`python "./arquivo.py"`)
-* **Dart** (`dart run "./arquivo.dart"`)
-* **C / C++** (Compilação automática com `clang`/`clang++` e execução de binários)
-* **Bash Scripts** (`bash "./arquivo.sh"`)
+### 🔌 1. Conectividade SSH Persistente em Background (Novo)
+* **Foreground Service de Rede**: Implementamos um serviço persistente nativo do Android. O terminal SSH e a comunicação SFTP não caem mais quando o aplicativo vai para segundo plano ou o celular desliga a tela.
+* **Heartbeat de Keep-Alive**: Envio automático de pacotes de heartbeat a cada 30 segundos para manter os túneis de conexão ativos e evitar desconexões por inatividade.
 
-### ⚡ 2. Terminal Termux Local Integrado (PTY Nativo)
-Acesso total ao poder do Linux! O JALIDE incorpora um terminal local de alto desempenho conectado diretamente ao Termux, permitindo gerenciar pacotes, rodar scripts locais, clonar repositórios com o Git e instalar dependências via `npm` ou `pip`.
+### 📲 2. Restauração de Workspace & Reconexão Silenciosa (Novo)
+* **Reconexão Automática**: Ao abrir o JALIDE, ele se reconecta silenciosamente à última sessão SSH bem-sucedida.
+* **Persistência de Abas**: Seu progresso de desenvolvimento é mantido! As abas de arquivos locais ou remotos que estavam abertas são restauradas exatamente de onde você parou.
 
-### ☁️ 3. Conexão SSH & SFTP Remota Completa
-Desenvolva direto em servidores remotos ou no Termux rodando via rede:
-* **Navegador SFTP integrado**: Abra, edite, crie e salve arquivos remotos de forma totalmente transparente.
-* **Terminal SSH persistente**: Rode comandos diretamente na sua máquina remota ou VPS enquanto edita seus arquivos em tempo real.
-* **Gerenciador de Perfis Seguro**: Suas credenciais são guardadas de forma criptografada na memória segura do celular.
+### ⌨️ 3. Histórico de Edição (Undo/Redo) Customizado por Aba (Novo)
+* **Pilha de Undo/Redo Independente**: As teclas `Ctrl+Z` (Undo) e `Ctrl+Y` (Redo) do teclado auxiliar agora funcionam nativamente no celular, mantendo pilhas de alterações separadas para cada arquivo.
+* **Debounce Inteligente**: Edições de digitação contínua são agrupadas para evitar gravação letra por letra, mas ações como quebras de linha (`Enter`), espaços, recortes, colagens e formatações salvam o estado de forma instantânea.
 
-### 💾 4. Sistema de Auto-Save Inteligente (Debounced)
-Esqueça a preocupação de salvar arquivos manualmente:
-* **Debounce de 1.5s**: Salva as alterações silenciosamente em background quando você pausa a digitação, poupando bateria e escrita de disco/SFTP.
-* **Instant Save na troca de abas**: Suas alterações são salvas na hora quando você muda de aba de arquivo no editor.
-* **Prevenção de Perda de Dados**: A IDE avisa antes de fechar qualquer arquivo se ainda houver alguma edição em processamento.
+### 🤖 4. Integração com Inteligência Artificial (Google Gemma)
+* **Assistente de IA Gratuito**: Uma aba de chat inteligente para tirar dúvidas de código, pedir otimizações e gerar trechos conversando diretamente com a IA do Google (Gemma). Basta configurar a sua chave de API gratuita do Google AI Studio.
+* **Sugestões Contextuais (Ghost Suggestions)**: A IA agora analisa seu código ativamente em segundo plano e oferece sugestões úteis diretamente na interface enquanto você digita (pode ser ativado/desativado nas opções).
 
-### 🎨 5. Interface Premium Dracula Theme & Ergonomia
-Projetado para ser bonito e confortável:
-* **Dracula Design System**: Cores e contrastes otimizados para programar à noite sem cansar os olhos.
-* **Teclado Auxiliar de Programação**: Teclas rápidas (`Ctrl`, `Tab`, chaves `{}`, colchetes `[]`, operadores `&&`, `=>`) para agilizar a digitação no teclado mobile.
-* **Gestão de Abas Fluida**: Suporta múltiplos arquivos abertos ao mesmo tempo com transições e badges coloridas.
+### 🧹 5. Auto-Format Offline & Formatação Inteligente
+* **Formatador Nativo Veloz**: Ajuste recuos, alinhamento de chaves e espaçamentos instantaneamente, sem precisar de internet.
+* **Auto-Format ao Salvar**: Escolha formatar o arquivo de forma automática toda vez que pressionar salvar (`Ctrl+S`).
+
+### 📱 6. Ajustes de Usabilidade no Teclado e Toque
+* **Teclas Auxiliares Corrigidas (TAB & ESC)**: Resolvemos o comportamento da tecla `TAB` (que antes tinha seus espaços removidos pelo formatador de atalhos) e da tecla `ESC` (que agora desfoca o editor e recolhe o teclado do sistema de forma limpa).
+* **Fim dos Menus Acidentais**: Toques rápidos no editor apenas posicionam o cursor. O menu nativo de seleção/copiar/colar agora só abre com toques longos (long press), oferecendo muito mais fluidez ao navegar pelo código.
+
+---
+
+## 🛠️ Correções e Estabilidade
+* Ajuste no ciclo de vida de memória e descarte de recursos de abas fechadas.
+* Correção de erros na árvore de navegação do file explorer remota.
+* Otimização no carregamento de perfis de SSH criptografados.
 
 ---
 
 ## 📲 Como Instalar
 
-1. Baixe o arquivo **`JALIDE-v0.1.0-3.apk`** listado abaixo nos Assets.
+1. Baixe o arquivo **`JALIDE-v1.0.0.apk`** listado nos Assets do release.
 2. No seu Android, permita a instalação de aplicativos de fontes desconhecidas (se solicitado).
 3. Instale o APK e abra o JALIDE!
 

@@ -36,7 +36,7 @@ import '../widgets/terminal_panel.dart';
 import '../widgets/status_bar.dart';
 import '../widgets/file_explorer.dart';
 import '../widgets/editor_tabs_bar.dart';
-import '../widgets/ai_dialog.dart';
+import '../widgets/ai_chat_panel.dart';
 import '../widgets/ai_settings_dialog.dart';
 import '../utils/code_formatter.dart';
 import 'ssh_connect_screen.dart';
@@ -902,6 +902,10 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
         final controller = tab.controller;
         final isRemote = tab.isRemote;
 
+        if (_autoFormatOnSave && tabIndex == _tabController.activeTabIndex) {
+          _formatCode(silent: true);
+        }
+
         final future = _writeFileContent(path, controller.text, isRemote);
         _currentSave = future;
         try {
@@ -927,6 +931,11 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
       final path = tab.path!;
       final controller = tab.controller;
       final isRemote = tab.isRemote;
+
+      final tabIndex = _tabController.openTabs.indexOf(tab);
+      if (_autoFormatOnSave && tabIndex != -1 && tabIndex == _tabController.activeTabIndex) {
+        _formatCode(silent: true);
+      }
 
       final future = _writeFileContent(path, controller.text, isRemote);
       _currentSave = future;
@@ -2353,11 +2362,11 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
         ),
 
         IconButton(
-          onPressed: _tabController.hasUnsavedChanges ? _saveFile : null,
+          onPressed: _tabController.activeTabIndex != -1 ? _saveFile : null,
           icon: Icon(
             Icons.save_outlined,
             size: 20,
-            color: _tabController.hasUnsavedChanges ? _theme.accent : _theme.textMuted,
+            color: _tabController.activeTabIndex != -1 ? _theme.accent : _theme.textMuted,
           ),
           tooltip: 'Salvar',
         ),
@@ -2372,13 +2381,13 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
           tooltip: 'Sobre',
         ),
         IconButton(
-          onPressed: _tabController.activeTabIndex != -1 ? _openAIDialog : null,
+          onPressed: _openAIPanel,
           icon: Icon(
-            Icons.lightbulb_outline,
+            Icons.auto_awesome_rounded,
             size: 20,
-            color: _tabController.activeTabIndex != -1 ? Colors.amber[600] : _theme.textMuted,
+            color: Colors.amber[600],
           ),
-          tooltip: 'Assistente IA (Gemma)',
+          tooltip: 'Assistente IA',
         ),
         PopupMenuButton<String>(
           color: _theme.surface,
@@ -2657,13 +2666,49 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
     );
   }
 
-  void _openAIDialog() {
-    showDialog(
+  Future<void> _openAIPanel() async {
+    // Coleta o contexto do projeto
+    final activeContent = _activeController?.text ?? '';
+    final activePath = _activePath ?? 'sem arquivo';
+    final lang = _languageName;
+
+    final projectPaths = _projectFiles
+        .where((f) => f['isDir'] != true)
+        .map((f) => (f['path'] ?? f['name']) as String)
+        .toList();
+
+    final openTabPaths = _tabController.openTabs
+        .map((t) => t.path ?? 'untitled')
+        .toList();
+
+    // Monta o texto de resumo do contexto para exibir na mensagem de sistema
+    final fileName = activePath != 'sem arquivo'
+        ? activePath.split(RegExp(r'[/\\]')).last
+        : 'sem arquivo';
+    final projectLabel = _projectPath != null
+        ? '${projectPaths.length} arquivo(s) no projeto'
+        : 'sem projeto aberto';
+    final contextSummary = '✦ Contexto: $fileName · $projectLabel';
+
+    // Inicia sessão de chat com o contexto injetado no system prompt
+    await _aiService.startChatWithContext(
+      activeFileContent: activeContent,
+      activeFilePath: activePath,
+      languageName: lang,
+      projectFilePaths: projectPaths,
+      openTabsPaths: openTabPaths,
+    );
+
+    if (!mounted) return;
+
+    showModalBottomSheet(
       context: context,
-      builder: (_) => AIDialog(
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      enableDrag: true,
+      builder: (_) => AIChatPanel(
         aiService: _aiService,
-        selectedCode: _tabController.activeTabIndex != -1 ? _activeController!.text : null,
-        language: _getLanguageForCurrentFile(),
+        contextSummary: contextSummary,
       ),
     );
   }
@@ -2672,37 +2717,6 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
     showDialog(context: context, builder: (_) => AISettingsDialog(aiService: _aiService));
   }
 
-  String? _getLanguageForCurrentFile() {
-    if (_activePath == null) return null;
-    final ext = p.extension(_activePath!).toLowerCase();
-    switch (ext) {
-      case '.dart':
-        return 'dart';
-      case '.py':
-        return 'python';
-      case '.js':
-        return 'javascript';
-      case '.ts':
-        return 'typescript';
-      case '.java':
-        return 'java';
-      case '.cpp':
-      case '.cc':
-        return 'cpp';
-      case '.c':
-        return 'c';
-      case '.json':
-        return 'json';
-      case '.xml':
-        return 'xml';
-      case '.html':
-        return 'html';
-      case '.css':
-        return 'css';
-      default:
-        return null;
-    }
-  }
 
   Widget _buildEditor() {
     if (_tabController.activeTabIndex == -1) {

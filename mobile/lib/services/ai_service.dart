@@ -3,6 +3,8 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
 
+
+
 class AIService {
   static const String _apiKeyStorageKey = 'gemma_api_key';
   static const String _modelStorageKey = 'gemini_model';
@@ -16,13 +18,19 @@ class AIService {
     {'id': 'gemini-1.5-pro', 'label': 'Gemini 1.5 Pro'},
   ];
 
-  late final GenerativeModel _model;
-  late final String _apiKey;
+  late GenerativeModel _chatModel;
+  late GenerativeModel _completionModel;
+  late String _apiKey;
   String _selectedModel = defaultModel;
   final _storage = const FlutterSecureStorage();
   bool _isInitialized = false;
 
+  /// Sessão de chat ativa — mantém o histórico de conversa.
+  ChatSession? _chatSession;
+
   AIService();
+
+  // ─── Leitura/escrita segura da chave API ────────────────────────────────
 
   Future<String?> _readKey() async {
     try {
@@ -86,20 +94,36 @@ class AIService {
     }
   }
 
+  // ─── Configurações de geração por modo ──────────────────────────────────
+
+  /// Config para chat: temperatura alta, muitos tokens de saída.
+  GenerationConfig get _chatConfig => GenerationConfig(
+    temperature: 0.7,
+    topK: 40,
+    topP: 0.95,
+    maxOutputTokens: 8192,
+  );
+
+  /// Config para completion inline: temperatura baixa, poucas tokens de saída.
+  GenerationConfig get _completionConfig => GenerationConfig(
+    temperature: 0.2,
+    topK: 20,
+    topP: 0.9,
+    maxOutputTokens: 256,
+  );
+
+  // ─── Inicialização ───────────────────────────────────────────────────────
+
   /// Inicializa o serviço com a chave API
   Future<void> initialize({String? apiKey}) async {
-    // Sempre re-inicializa se uma nova chave for fornecida
     if (_isInitialized && apiKey == null) return;
 
-    // Carrega o modelo salvo
     _selectedModel = await _readModel();
 
-    // Se forneceu chave, salva de forma segura
     if (apiKey != null) {
       _apiKey = apiKey;
       await _writeKey(apiKey);
     } else {
-      // Tenta recuperar chave salva
       final savedKey = await _readKey();
       if (savedKey == null) {
         throw Exception('Chave API não configurada. Use setApiKey() primeiro.');
@@ -107,44 +131,40 @@ class AIService {
       _apiKey = savedKey;
     }
 
-    _rebuildModel();
+    _rebuildModels();
     _isInitialized = true;
   }
 
-  /// Reconstrói o GenerativeModel com o modelo e chave atuais
-  void _rebuildModel() {
-    _model = GenerativeModel(
+  /// Reconstrói os modelos com a chave e modelo selecionado atuais.
+  void _rebuildModels() {
+    _chatModel = GenerativeModel(
       model: _selectedModel,
       apiKey: _apiKey,
-      generationConfig: GenerationConfig(
-        temperature: 0.7,
-        topK: 40,
-        topP: 0.95,
-        maxOutputTokens: 2048,
-      ),
+      generationConfig: _chatConfig,
+    );
+    _completionModel = GenerativeModel(
+      model: _selectedModel,
+      apiKey: _apiKey,
+      generationConfig: _completionConfig,
     );
   }
 
-  /// Retorna o modelo atualmente selecionado
   String getModel() => _selectedModel;
 
-  /// Troca o modelo de IA em uso
   Future<void> setModel(String modelId) async {
     _selectedModel = modelId;
     await _saveModel(modelId);
     if (_isInitialized) {
-      _rebuildModel();
+      _rebuildModels();
+      // Reinicia a sessão de chat ao trocar o modelo
+      _chatSession = null;
     }
   }
 
-  /// Define/atualiza a chave API e valida se ela funciona
-  /// Lança exceção com a mensagem real da API se a chave for inválida
   Future<void> setApiKey(String apiKey) async {
-    // Força re-inicialização mesmo que já esteja inicializado
     _isInitialized = false;
     await initialize(apiKey: apiKey);
 
-    // Testa a chave imediatamente com uma chamada mínima
     try {
       final testModel = GenerativeModel(
         model: 'gemini-2.5-flash',
@@ -152,26 +172,150 @@ class AIService {
       );
       await testModel.generateContent([Content.text('hi')]);
     } catch (e) {
-      // Se falhar, remove a chave salva e lança o erro real da API
       await _deleteKey();
       _isInitialized = false;
       throw Exception('Chave inválida: $e');
     }
   }
 
-  /// Remove a chave API salva
   Future<void> clearApiKey() async {
     await _deleteKey();
     _isInitialized = false;
+    _chatSession = null;
   }
 
-  /// Verifica se tem chave configurada
   Future<bool> hasApiKey() async {
     final key = await _readKey();
     return key != null;
   }
 
-  /// Gera completion para código (autocompletar)
+  // ─── Chat com contexto do projeto ───────────────────────────────────────
+
+  /// Inicia (ou reinicia) uma sessão de chat com o contexto do projeto
+  /// injetado como primeira mensagem do sistema.
+  Future<void> startChatWithContext({
+    required String activeFileContent,
+    required String activeFilePath,
+    required String languageName,
+    List<String> projectFilePaths = const [],
+    List<String> openTabsPaths = const [],
+  }) async {
+    if (!_isInitialized) {
+      try {
+        await initialize();
+      } catch (e) {
+        // Sem chave: inicia sessão sem contexto — o painel mostrará erro
+        return;
+      }
+    }
+
+    final systemPrompt = _buildSystemPrompt(
+      activeFileContent: activeFileContent,
+      activeFilePath: activeFilePath,
+      languageName: languageName,
+      projectFilePaths: projectFilePaths,
+      openTabsPaths: openTabsPaths,
+    );
+
+    // Injeta o contexto como primeira mensagem do modelo (papel model),
+    // e o "ok" como resposta do usuário, para que o chat comece com contexto.
+    _chatSession = _chatModel.startChat(
+      history: [
+        Content.text(systemPrompt),
+        Content.model([TextPart('Contexto carregado. Pode perguntar!')]),
+      ],
+    );
+  }
+
+  /// Monta o system prompt com o contexto do projeto.
+  String _buildSystemPrompt({
+    required String activeFileContent,
+    required String activeFilePath,
+    required String languageName,
+    required List<String> projectFilePaths,
+    required List<String> openTabsPaths,
+  }) {
+    // Trunca o conteúdo do arquivo se for muito longo
+    final maxFileChars = 6000;
+    final truncated = activeFileContent.length > maxFileChars;
+    final fileSnippet = truncated
+        ? '${activeFileContent.substring(0, maxFileChars)}\n... (truncado — arquivo muito longo)'
+        : activeFileContent;
+
+    // Monta a árvore de arquivos do projeto (só caminhos, sem conteúdo)
+    final projectTree = projectFilePaths.isEmpty
+        ? '(nenhum projeto aberto)'
+        : projectFilePaths.take(100).join('\n');
+
+    final openTabs = openTabsPaths.isEmpty
+        ? '(nenhuma aba aberta)'
+        : openTabsPaths.join('\n');
+
+    return '''Você é um assistente de programação integrado à IDE JAL — uma IDE mobile para Android.
+Ajude o usuário com código, bugs, refatoração, explicações e dúvidas sobre o projeto.
+
+## Arquivo ativo
+Caminho: $activeFilePath
+Linguagem: $languageName
+
+```$languageName
+$fileSnippet
+```
+
+## Estrutura do projeto
+$projectTree
+
+## Abas abertas
+$openTabs
+
+## Instruções
+- Responda sempre em português brasileiro
+- Use formatação Markdown nas respostas
+- Para blocos de código, especifique sempre a linguagem (ex: ```dart)
+- Seja conciso e direto; evite explicações excessivamente longas
+- Quando sugerir alterações no código, mostre apenas a parte modificada, não o arquivo inteiro
+- Se o usuário perguntar algo que não está relacionado a programação, redirecione educadamente''';
+  }
+
+  /// Envia uma mensagem para o chat e retorna um Stream de partes de texto
+  /// (streaming de resposta — texto aparece progressivamente).
+  Stream<String> sendMessage(String message) async* {
+    if (!_isInitialized) {
+      try {
+        await initialize();
+      } catch (e) {
+        yield 'Erro: Chave API do Gemini não configurada. Vá em ⚙️ Configurações para adicionar sua chave.';
+        return;
+      }
+    }
+
+    // Garante que há uma sessão ativa (caso startChatWithContext não tenha sido chamado)
+    _chatSession ??= _chatModel.startChat();
+
+    try {
+      final responseStream = _chatSession!.sendMessageStream(
+        Content.text(message),
+      );
+      await for (final chunk in responseStream) {
+        final text = chunk.text;
+        if (text != null && text.isNotEmpty) {
+          yield text;
+        }
+      }
+    } catch (e) {
+      yield '\n\n**Erro ao comunicar com a IA:** $e';
+    }
+  }
+
+  /// Reinicia o chat — descarta o histórico e a sessão atual.
+  void resetChat() {
+    _chatSession = null;
+  }
+
+  // ─── Completion inline (ghost suggestions) ──────────────────────────────
+
+  /// Gera completion para código inline (usada pelo GhostSuggestionBar).
+  /// Usa config de baixa temperatura para precisão.
   Future<String> generateCompletion(String prompt) async {
     if (!_isInitialized) {
       try {
@@ -183,89 +327,28 @@ class AIService {
 
     try {
       final content = [Content.text(prompt)];
-      final response = await _model.generateContent(content);
+      final response = await _completionModel.generateContent(content);
       return response.text ?? 'Sem resposta da IA';
     } catch (e) {
       return 'Erro ao gerar resposta: $e';
     }
   }
 
-  /// Analisa código e sugere melhorias
-  Future<String> analyzeCode(String code, {String? language}) async {
-    final langInfo = language != null ? ' ($language)' : '';
-    final prompt = 'Analise este código$langInfo e sugira melhorias de forma concisa:\n\n'
-        '```\n'
-        '$code\n'
-        '```\n\n'
-        'Responda com:\n'
-        '1. Problemas encontrados (se houver)\n'
-        '2. 2-3 sugestões de melhoria\n'
-        '3. Um exemplo corrigido (se relevante)';
+  // ─── Pergunta sobre erro (usada externamente) ────────────────────────────
 
-    return generateCompletion(prompt);
-  }
+  /// Pergunta sobre um erro/problema — usa o chat ativo se disponível.
+  Stream<String> askAboutError(String error) {
+    final prompt = '''Recebi este erro no meu código:
 
-  /// Explica um trecho de código
-  Future<String> explainCode(String code) async {
-    final prompt = 'Explique este código de forma clara e concisa:\n\n'
-        '```\n'
-        '$code\n'
-        '```\n\n'
-        'Responda em máximo 3 linhas.';
-
-    return generateCompletion(prompt);
-  }
-
-  /// Corrige erros em código
-  Future<String> fixError(String code, String error) async {
-    final prompt = 'Este código tem um erro:\n\n'
-        '```\n'
-        '$code\n'
-        '```\n\n'
-        'Erro: $error\n\n'
-        'Forneça:\n'
-        '1. O problema\n'
-        '2. Código corrigido\n'
-        '3. Uma breve explicação';
-
-    return generateCompletion(prompt);
-  }
-
-  /// Sugere nome para variável/função
-  Future<String> suggestName(String context, String type) async {
-    final prompt = 'Dado este contexto:\n$context\n\n'
-        'Sugira 3 nomes bons para uma $type. Formato: nome1, nome2, nome3';
-
-    return generateCompletion(prompt);
-  }
-
-  /// Gera documentação para função
-  Future<String> generateDocumentation(String code) async {
-    final prompt = 'Gere documentação JSDoc/Dart Doc para esta função/método:\n\n'
-        '```\n'
-        '$code\n'
-        '```\n\n'
-        'Responda apenas com o comentário de documentação.';
-
-    return generateCompletion(prompt);
-  }
-
-  /// Chat geral com Gemma
-  Future<String> chat(String message) async {
-    return generateCompletion(message);
-  }
-
-  /// Pergunta sobre um erro/problema
-  Future<String> askAboutError(String error) async {
-    final prompt = '''Sou um desenvolvedor e recebi este erro:
-
+```
 $error
+```
 
 Me explique:
 1. O que significa
 2. Causas comuns
 3. Como resolver''';
 
-    return generateCompletion(prompt);
+    return sendMessage(prompt);
   }
 }
