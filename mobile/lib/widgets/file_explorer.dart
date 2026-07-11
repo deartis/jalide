@@ -78,9 +78,13 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
 
 
   void _selectFolderInTree(String path) {
-    setState(() {
-      _selectedPath = path;
-      _isSelectedPathDir = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        setState(() {
+          _selectedPath = path;
+          _isSelectedPathDir = true;
+        });
+      }
     });
   }
 

@@ -749,9 +749,7 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
       _addTab(path, content, isRemote: _isRemoteProject);
 
       // Fecha o drawer usando a chave global do Scaffold
-      if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
-        _scaffoldKey.currentState?.closeDrawer();
-      }
+      _scaffoldKey.currentState?.closeDrawer();
     } catch (e) {
       _showToast('Erro ao abrir arquivo: $e', type: _ToastType.error);
     }
@@ -2225,10 +2223,13 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
 
   @override
   Widget build(BuildContext context) {
+    final isDarkTheme = ThemeProvider.of(context).themeType != ThemeType.light;
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.light.copyWith(
+      value: (isDarkTheme ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark).copyWith(
         statusBarColor: _theme.bg,
-        systemNavigationBarColor: _theme.accent,
+        statusBarIconBrightness: isDarkTheme ? Brightness.light : Brightness.dark,
+        systemNavigationBarColor: _theme.surface,
+        systemNavigationBarIconBrightness: isDarkTheme ? Brightness.light : Brightness.dark,
       ),
       child: Scaffold(
         key: _scaffoldKey,
@@ -2680,31 +2681,97 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
           backgroundColor: _theme.surface,
           title: Text(
             'Selecionar Tema',
-            style: TextStyle(color: _theme.textPri),
+            style: TextStyle(color: _theme.textPri, fontSize: 16, fontWeight: FontWeight.bold),
           ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: ThemeType.values.map((type) {
-              final label = type == ThemeType.darkPurple
-                  ? 'DARK PURPLE'
-                  : type.name.toUpperCase();
-              return RadioListTile<ThemeType>(
-                title: Text(
-                  label,
-                  style: TextStyle(color: _theme.textPri, fontSize: 14),
-                ),
-                value: type,
-                groupValue: provider.themeType,
-                onChanged: (ThemeType? value) {
-                  if (value != null) {
-                    provider.setTheme(value);
-                    Navigator.pop(context);
-                  }
-                },
-                activeColor: _theme.accent,
-              );
-            }).toList(),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: ThemeType.values.map((type) {
+                final label = type == ThemeType.darkPurple
+                    ? 'DARK PURPLE'
+                    : type.name.toUpperCase();
+                final themeVariant = switch (type) {
+                  ThemeType.darkPurple => JalideThemeVariant.darkPurple,
+                  ThemeType.dark => JalideThemeVariant.dark,
+                  ThemeType.light => JalideThemeVariant.light,
+                  ThemeType.dracula => JalideThemeVariant.dracula,
+                };
+                final isSelected = provider.themeType == type;
+
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: InkWell(
+                    onTap: () {
+                      provider.setTheme(type);
+                      Navigator.pop(context);
+                    },
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: themeVariant.bg,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: isSelected ? themeVariant.accent : themeVariant.border,
+                          width: isSelected ? 2 : 1,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 14,
+                            height: 14,
+                            decoration: BoxDecoration(
+                              color: themeVariant.accent,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              label,
+                              style: TextStyle(
+                                color: themeVariant.textPri,
+                                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                fontSize: 12,
+                                fontFamily: 'monospace',
+                              ),
+                            ),
+                          ),
+                          // Pequenos blocos mostrando outras cores representativas do tema
+                          Container(
+                            width: 10,
+                            height: 10,
+                            margin: const EdgeInsets.only(left: 4),
+                            decoration: BoxDecoration(
+                              color: themeVariant.surface,
+                              borderRadius: BorderRadius.circular(2),
+                              border: Border.all(color: themeVariant.border, width: 0.5),
+                            ),
+                          ),
+                          Container(
+                            width: 10,
+                            height: 10,
+                            margin: const EdgeInsets.only(left: 4),
+                            decoration: BoxDecoration(
+                              color: themeVariant.textMuted,
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('Fechar', style: TextStyle(color: _theme.textMuted)),
+            ),
+          ],
         );
       },
     );

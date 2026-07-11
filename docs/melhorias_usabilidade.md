@@ -1,4 +1,4 @@
-﻿# Melhorias de Usabilidade e Estabilidade — Julho de 2026
+# Melhorias de Usabilidade e Estabilidade — Julho de 2026
 
 Este documento reúne e detalha as melhorias de usabilidade e estabilidade feitas no **JALIDE** em Julho de 2026.
 
@@ -36,3 +36,19 @@ Este documento reúne e detalha as melhorias de usabilidade e estabilidade feita
 - **Solução:**
   - O botão **Desconectar** da notificação agora chama `stopService` no isolate em background de forma autônoma, fechando o serviço e removendo a notificação na hora.
   - Adicionado o botão **Sair** à notificação. Clicá-lo encerra o serviço e executa `exit(0)`, matando o processo inteiro do app instantaneamente, assim como no Termux.
+
+---
+
+## 6. Otimizações de Fluxo e Interface de Usuário (UI/UX)
+**Problema:** Várias inconsistências de usabilidade geravam atritos no uso diário do aplicativo (como notificações que nunca sumiam, diálogos de abas incompletos e caminhos de arquivo muito longos poluindo a tela).
+- **Solução:**
+  - **Duração Inteligente de Toasts:** Toasts de sucesso ou informativos agora fecham sozinhos em 3 segundos, enquanto mensagens de erro permanecem por 6 segundos, eliminando a necessidade de fechá-los manualmente a todo momento.
+  - **Ação "Salvar e Fechar":** Adicionamos a opção de salvar alterações diretamente ao fechar abas modificadas, evitando a necessidade de salvar manualmente antes de dispensar o editor.
+  - **Caminho Relativo no Título:** O título da barra superior agora exibe o caminho simplificado relativo ao projeto (ex: `src/routes/auth.js`) em vez do caminho absoluto do sistema operacional.
+  - **Menu de Opções Reorganizado:** Reestruturamos o menu principal em subseções agrupadas tematicamente (Arquivo, Editor, IA, Sessão e App), facilitando a localização de cada recurso.
+  - **Área de Toque das Tabs Aumentada:** O botão de fechar tab (`×`) recebeu um preenchimento maior (padding), facilitando o fechamento em telas de toque menores.
+  - **Indicador de Destino no Teclado Auxiliar:** Um indicador visual dinâmico no topo do teclado (`EDIT` ou `TERM`) mostra claramente se as teclas inseridas vão para o editor ou para o terminal ativo.
+  - **Visualizador de Temas Modernizado:** A seleção de temas agora exibe cards de pré-visualização contendo a paleta de cores correspondente a cada variante (Dracula, Dark, Dark Purple e Light).
+  - **Prevenção de Erros durante Build do Explorer**: Corrigimos o erro de reconstrução concorrente (`setState() during build`) no gerenciador de diretórios usando inicialização diferida por frames.
+  - **Ícones Expandidos no Explorer:** Adicionamos suporte a dezenas de novas extensões de arquivo com ícones e cores dedicadas (Python, Dart, TypeScript, Rust, Go, C/C++, Shell scripts, YAML, XML, Git, etc.).
+
