@@ -21,6 +21,8 @@ JALIDE é uma IDE móvel moderna e poderosa desenvolvida em Flutter, com suporte
 
 📖 **Consulte a [Documentação de Funcionalidades](docs/funcionalidades.md) para saber mais sobre a arquitetura técnica e detalhes de uso.**
 
+🛠️ **Confira o histórico completo de [Melhorias de Usabilidade e Estabilidade](docs/melhorias_usabilidade.md) (Julho de 2026).**
+
 
 ---
 
@@ -44,7 +46,24 @@ JALIDE é uma IDE móvel moderna e poderosa desenvolvida em Flutter, com suporte
 
 ---
 
-## 🎯 O que há de novo (v1.0.1)
+## 🎯 O que há de novo (v1.1.0) - Julho de 2026
+
+### 🧹 Formatação Inteligente & Cursor Inteligente
+- **Preservação de Foco do Cursor** — O cursor e as seleções ativas no editor agora acompanham as mudanças de recuo e formatação de código (`CodeFormatter.getFormattedOffset`), sem saltar de linha ou perder o foco do código.
+
+### 📱 Estabilidade com Termux Background
+- **Auto-Wake do sshd** — O app agora acorda o Termux e garante que o daemon `sshd` está ativo em qualquer tentativa de conexão local, prevenindo falhas de conexão caso o Android encerre processos em background.
+
+### 📂 Painel de Arquivos Refinado
+- **Seleção e Criação no Diretório Raiz** — O cabeçalho do projeto no topo do Drawer lateral agora serve para limpar seleções internas e focar na raiz (com realce de destaque ativo). Além disso, a pasta de destino é indicada no diálogo de criação (`Em: raiz`, etc.).
+- **Ações Rápidas no Long-press** — Criação de arquivos e pastas disponível diretamente no menu contextual ao segurar qualquer pasta.
+
+### 🔐 Botão "Sair" e Parada de Serviço Autônoma
+- **Notificação Otimizada** — O botão "Desconectar" na notificação funciona independentemente do isolate principal estar ativo. Adicionado também o botão **Sair** para matar o processo por completo instantaneamente.
+
+---
+
+## 🎯 Na versão anterior (v1.0.1)
 
 ### 📄 Nova Documentação Oficial
 - **Arquitetura & Recursos Detalhados** — Lançamento do guia técnico e manual do usuário completo em `docs/funcionalidades.md`, detalhando o fluxo de abas, atalhos, SSH e IA.

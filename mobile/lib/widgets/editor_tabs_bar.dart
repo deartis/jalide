@@ -71,12 +71,15 @@ class EditorTabsBar extends StatelessWidget {
                   const SizedBox(width: 8),
                   GestureDetector(
                     onTap: () => onCloseTab(i),
-                    child: Icon(
-                      Icons.close,
-                      size: 14,
-                      color: isActive
-                          ? theme.textMuted
-                          : theme.textMuted.withValues(alpha: 0.3),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                      child: Icon(
+                        Icons.close,
+                        size: 14,
+                        color: isActive
+                            ? theme.textMuted
+                            : theme.textMuted.withValues(alpha: 0.3),
+                      ),
                     ),
                   ),
                 ],

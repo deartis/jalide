@@ -6,6 +6,7 @@ import '../services/ssh_service.dart';
 import '../theme/jalide_theme.dart';
 import '../utils/file_utils.dart';
 import '../utils/path_navigator.dart';
+import '../screens/donation_screen.dart';
 
 class FileExplorerDrawer extends StatefulWidget {
   final String? projectPath;
@@ -817,6 +818,51 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
                         .map((item) => _buildExplorerNode(context, item))
                         .toList(),
                   ),
+          ),
+          Divider(
+            height: 1,
+            color: theme.accent.withValues(alpha: 0.15),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: InkWell(
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const DonationScreen()),
+                );
+              },
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                decoration: BoxDecoration(
+                  color: theme.accent.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: theme.accent.withValues(alpha: 0.15),
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.favorite_rounded,
+                      color: Colors.redAccent,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Pague-me um café ☕',
+                      style: TextStyle(
+                        color: theme.textPri,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
         ],
       ),

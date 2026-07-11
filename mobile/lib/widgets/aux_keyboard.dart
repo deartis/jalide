@@ -24,12 +24,14 @@ class AuxKeyboard extends StatefulWidget {
   final List<String> auxKeys; // mantido por compatibilidade, não usado
   final bool ctrlActive;
   final Function(String) onKeyTap;
+  final bool isTerminalMode;
 
   const AuxKeyboard({
     super.key,
     required this.auxKeys,
     this.ctrlActive = false,
     required this.onKeyTap,
+    this.isTerminalMode = false,
   });
 
   @override
@@ -135,52 +137,85 @@ class _AuxKeyboardState extends State<AuxKeyboard> {
         border: Border(bottom: BorderSide(color: theme.border, width: 0.5)),
       ),
       child: Row(
-        children: List.generate(_layers.length, (i) {
-          final isActive = i == _layer;
-          final layer = _layers[i];
-          return Expanded(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => setState(() => _layer = i),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 150),
-                decoration: BoxDecoration(
-                  color: isActive
-                      ? theme.surface
-                      : Colors.transparent,
-                  border: Border(
-                    bottom: BorderSide(
-                      color: isActive ? theme.accent : Colors.transparent,
-                      width: 2,
+        children: [
+          ...List.generate(_layers.length, (i) {
+            final isActive = i == _layer;
+            final layer = _layers[i];
+            return Expanded(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => setState(() => _layer = i),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  decoration: BoxDecoration(
+                    color: isActive
+                        ? theme.surface
+                        : Colors.transparent,
+                    border: Border(
+                      bottom: BorderSide(
+                        color: isActive ? theme.accent : Colors.transparent,
+                        width: 2,
+                      ),
+                      right: BorderSide(color: theme.border, width: 0.5),
                     ),
-                    right: BorderSide(color: theme.border, width: 0.5),
                   ),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      layer.icon,
-                      size: 12,
-                      color: isActive ? theme.accent : theme.textMuted,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      layer.label,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontFamily: 'monospace',
-                        fontWeight:
-                            isActive ? FontWeight.bold : FontWeight.normal,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        layer.icon,
+                        size: 12,
                         color: isActive ? theme.accent : theme.textMuted,
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 4),
+                      Text(
+                        layer.label,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontFamily: 'monospace',
+                          fontWeight:
+                              isActive ? FontWeight.bold : FontWeight.normal,
+                          color: isActive ? theme.accent : theme.textMuted,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
+            );
+          }),
+          // Badge de modo: indica se o teclado está controlando o editor ou o terminal
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            decoration: BoxDecoration(
+              border: Border(left: BorderSide(color: theme.border, width: 0.5)),
             ),
-          );
-        }),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  widget.isTerminalMode ? Icons.terminal : Icons.code,
+                  size: 10,
+                  color: widget.isTerminalMode
+                      ? const Color(0xFF50FA7B)
+                      : theme.textMuted,
+                ),
+                const SizedBox(width: 3),
+                Text(
+                  widget.isTerminalMode ? 'TERM' : 'EDIT',
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.bold,
+                    color: widget.isTerminalMode
+                        ? const Color(0xFF50FA7B)
+                        : theme.textMuted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -859,6 +859,15 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
       return;
     }
 
+    // Aviso se salvar sem extensão (syntax highlight não vai funcionar)
+    final hasExtension = confirmedName.trim().contains('.');
+    if (!hasExtension) {
+      _showToast(
+        '⚠️ Arquivo sem extensão — o realce de sintaxe pode não funcionar.',
+        type: _ToastType.info,
+      );
+    }
+
     if (_autoFormatOnSave) {
       _formatCode(silent: true);
     }
@@ -1543,7 +1552,9 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
             width: 1,
           ),
         ),
-        duration: const Duration(days: 1),
+        duration: type == _ToastType.error
+            ? const Duration(seconds: 6)
+            : const Duration(seconds: 3),
       ),
     );
   }
@@ -2315,6 +2326,7 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
               auxKeys: _currentAuxKeys,
               ctrlActive: _ctrlActive,
               onKeyTap: _handleAuxKeyTap,
+              isTerminalMode: _isTerminalActive,
             ),
             StatusBar(
               languageName: _languageName,
@@ -2400,7 +2412,9 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
                   ),
                   if (_activePath != null)
                     Text(
-                      _activePath!,
+                      _projectPath != null && _activePath!.startsWith(_projectPath!)
+                          ? _activePath!.substring(_projectPath!.length).replaceFirst(RegExp(r'^[\/]'), '')
+                          : _activePath!,
                       style: TextStyle(
                         color: _theme.textMuted,
                         fontSize: 9,
@@ -2425,7 +2439,9 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
                 ? const Color(0xFF50FA7B)
                 : _theme.textMuted,
           ),
-          tooltip: 'Executar arquivo',
+          tooltip: _tabController.activeTabIndex != -1
+              ? 'Executar arquivo'
+              : 'Abra um arquivo para executar',
         ),
 
         IconButton(
@@ -2533,46 +2549,34 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
             }
           },
           itemBuilder: (_) => [
+            // ── Arquivo
             _menuItem('new', 'Novo arquivo', Icons.add_outlined),
             _menuItem('save_as', 'Salvar como…', Icons.save_as_outlined),
             const PopupMenuDivider(),
+            // ── Editor
             _menuItem('zoom_in', 'Aumentar fonte', Icons.zoom_in),
             _menuItem('zoom_out', 'Diminuir fonte', Icons.zoom_out),
-            const PopupMenuDivider(),
+            _menuItem('format', 'Formatar Código', Icons.format_align_left_outlined),
             _menuItem(
               'autosave',
-              _autoSaveEnabled ? 'Auto-Save: [ON]' : 'Auto-Save: [OFF]',
-              _autoSaveEnabled
-                  ? Icons.toggle_on_outlined
-                  : Icons.toggle_off_outlined,
+              _autoSaveEnabled ? 'Auto-Save • ON' : 'Auto-Save • OFF',
+              _autoSaveEnabled ? Icons.toggle_on_outlined : Icons.toggle_off_outlined,
             ),
             _menuItem(
               'autoformat',
-              _autoFormatOnSave ? 'Auto-Format: [ON]' : 'Auto-Format: [OFF]',
-              _autoFormatOnSave
-                  ? Icons.align_horizontal_left
-                  : Icons.align_horizontal_left_outlined,
-            ),
-            _menuItem(
-              'format',
-              'Formatar Código',
-              Icons.format_align_left_outlined,
+              _autoFormatOnSave ? 'Auto-Format • ON' : 'Auto-Format • OFF',
+              _autoFormatOnSave ? Icons.align_horizontal_left : Icons.align_horizontal_left_outlined,
             ),
             const PopupMenuDivider(),
-            _menuItem(
-              'ai_settings',
-              'Config. Gemma IA',
-              Icons.settings_outlined,
-            ),
+            // ── IA
+            _menuItem('ai_settings', 'Config. Gemma IA', Icons.settings_outlined),
             _menuItem(
               'ghost',
-              _ghostSuggestionsEnabled
-                  ? 'Sugestões IA: [ON]'
-                  : 'Sugestões IA: [OFF]',
-              _ghostSuggestionsEnabled
-                  ? Icons.auto_awesome
-                  : Icons.auto_awesome_outlined,
+              _ghostSuggestionsEnabled ? 'Sugestões IA • ON' : 'Sugestões IA • OFF',
+              _ghostSuggestionsEnabled ? Icons.auto_awesome : Icons.auto_awesome_outlined,
             ),
+            const PopupMenuDivider(),
+            // ── Sessão
             _menuItem('ssh', 'SSH Remote', Icons.cloud_outlined),
             _menuItem('theme', 'Mudar Tema', Icons.palette_outlined),
             const PopupMenuDivider(),
@@ -2627,7 +2631,7 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
             style: TextStyle(color: _theme.textPri),
           ),
           content: Text(
-            'Deseja fechar esta aba sem salvar as alterações?',
+            'Deseja fechar "${tab.name}"?',
             style: TextStyle(color: _theme.textMuted),
           ),
           actions: [
@@ -2644,8 +2648,19 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
                 proceedClose();
               },
               child: const Text(
-                'Fechar mesmo assim',
+                'Descartar',
                 style: TextStyle(color: Colors.redAccent),
+              ),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.pop(context);
+                await _instantSaveTab(tab);
+                proceedClose();
+              },
+              child: Text(
+                'Salvar e Fechar',
+                style: TextStyle(color: _theme.accent, fontWeight: FontWeight.bold),
               ),
             ),
           ],

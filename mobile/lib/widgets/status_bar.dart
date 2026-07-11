@@ -51,14 +51,6 @@ class StatusBar extends StatelessWidget {
               theme: theme,
               onTap: onSshTap,
             ),
-          if (hasUnsavedChanges)
-            Padding(
-              padding: const EdgeInsets.only(left: 8),
-              child: Text(
-                '●',
-                style: TextStyle(color: theme.bg, fontSize: 10),
-              ),
-            ),
         ],
       ),
     );
