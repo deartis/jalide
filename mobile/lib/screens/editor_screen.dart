@@ -40,6 +40,7 @@ import '../widgets/ai_chat_panel.dart';
 import '../widgets/ai_settings_dialog.dart';
 import '../utils/code_formatter.dart';
 import 'ssh_connect_screen.dart';
+import '../l10n/app_localizations.dart';
 
 
 class EditorScreen extends StatefulWidget {
@@ -2441,8 +2442,8 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
                 : _theme.textMuted,
           ),
           tooltip: _tabController.activeTabIndex != -1
-              ? 'Executar arquivo'
-              : 'Abra um arquivo para executar',
+              ? AppLocalizations.of(context)!.runFile
+              : AppLocalizations.of(context)!.openFileToRun,
         ),
 
         IconButton(
@@ -2452,7 +2453,7 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
             size: 20,
             color: _tabController.activeTabIndex != -1 ? _theme.accent : _theme.textMuted,
           ),
-          tooltip: 'Salvar',
+          tooltip: AppLocalizations.of(context)!.save,
         ),
         IconButton(
           onPressed: () {
@@ -2462,7 +2463,7 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
             );
           },
           icon: Icon(Icons.info_outline, size: 22, color: _theme.textMuted),
-          tooltip: 'Sobre',
+          tooltip: AppLocalizations.of(context)!.about,
         ),
         IconButton(
           onPressed: _openAIPanel,
@@ -2471,7 +2472,7 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
             size: 20,
             color: Colors.amber[600],
           ),
-          tooltip: 'Assistente IA',
+          tooltip: AppLocalizations.of(context)!.aiAssistant,
         ),
         PopupMenuButton<String>(
           color: _theme.surface,
@@ -2520,9 +2521,9 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
                   context: context,
                   builder: (ctx) => AlertDialog(
                     backgroundColor: _theme.surface,
-                    title: Text('Sair', style: TextStyle(color: _theme.textPri)),
+                    title: Text(AppLocalizations.of(context)!.exitConfirmTitle, style: TextStyle(color: _theme.textPri)),
                     content: Text(
-                      'Tem certeza que deseja sair da aplicação?',
+                      AppLocalizations.of(context)!.exitConfirmMessage,
                       style: TextStyle(color: _theme.textMuted),
                     ),
                     actions: [
@@ -2538,9 +2539,9 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
                           Navigator.pop(ctx);
                           SystemNavigator.pop();
                         },
-                        child: const Text(
-                          'Sair',
-                          style: TextStyle(color: Colors.redAccent),
+                        child: Text(
+                          AppLocalizations.of(context)!.exit,
+                          style: const TextStyle(color: Colors.redAccent),
                         ),
                       ),
                     ],
@@ -2549,40 +2550,43 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
                 break;
             }
           },
-          itemBuilder: (_) => [
-            // ── Arquivo
-            _menuItem('new', 'Novo arquivo', Icons.add_outlined),
-            _menuItem('save_as', 'Salvar como…', Icons.save_as_outlined),
-            const PopupMenuDivider(),
-            // ── Editor
-            _menuItem('zoom_in', 'Aumentar fonte', Icons.zoom_in),
-            _menuItem('zoom_out', 'Diminuir fonte', Icons.zoom_out),
-            _menuItem('format', 'Formatar Código', Icons.format_align_left_outlined),
-            _menuItem(
-              'autosave',
-              _autoSaveEnabled ? 'Auto-Save • ON' : 'Auto-Save • OFF',
-              _autoSaveEnabled ? Icons.toggle_on_outlined : Icons.toggle_off_outlined,
-            ),
-            _menuItem(
-              'autoformat',
-              _autoFormatOnSave ? 'Auto-Format • ON' : 'Auto-Format • OFF',
-              _autoFormatOnSave ? Icons.align_horizontal_left : Icons.align_horizontal_left_outlined,
-            ),
-            const PopupMenuDivider(),
-            // ── IA
-            _menuItem('ai_settings', 'Config. Gemma IA', Icons.settings_outlined),
-            _menuItem(
-              'ghost',
-              _ghostSuggestionsEnabled ? 'Sugestões IA • ON' : 'Sugestões IA • OFF',
-              _ghostSuggestionsEnabled ? Icons.auto_awesome : Icons.auto_awesome_outlined,
-            ),
-            const PopupMenuDivider(),
-            // ── Sessão
-            _menuItem('ssh', 'SSH Remote', Icons.cloud_outlined),
-            _menuItem('theme', 'Mudar Tema', Icons.palette_outlined),
-            const PopupMenuDivider(),
-            _menuItem('exit', 'Sair da aplicação', Icons.exit_to_app),
-          ],
+          itemBuilder: (context) {
+            final l10n = AppLocalizations.of(context)!;
+            return [
+              // ── Arquivo
+              _menuItem('new', l10n.newFile, Icons.add_outlined),
+              _menuItem('save_as', l10n.saveAs, Icons.save_as_outlined),
+              const PopupMenuDivider(),
+              // ── Editor
+              _menuItem('zoom_in', l10n.increaseFont, Icons.zoom_in),
+              _menuItem('zoom_out', l10n.decreaseFont, Icons.zoom_out),
+              _menuItem('format', l10n.formatCode, Icons.format_align_left_outlined),
+              _menuItem(
+                'autosave',
+                _autoSaveEnabled ? l10n.autoSaveOn : l10n.autoSaveOff,
+                _autoSaveEnabled ? Icons.toggle_on_outlined : Icons.toggle_off_outlined,
+              ),
+              _menuItem(
+                'autoformat',
+                _autoFormatOnSave ? l10n.autoFormatOn : l10n.autoFormatOff,
+                _autoFormatOnSave ? Icons.align_horizontal_left : Icons.align_horizontal_left_outlined,
+              ),
+              const PopupMenuDivider(),
+              // ── IA
+              _menuItem('ai_settings', l10n.aiSettings, Icons.settings_outlined),
+              _menuItem(
+                'ghost',
+                _ghostSuggestionsEnabled ? l10n.ghostSuggestionsOn : l10n.ghostSuggestionsOff,
+                _ghostSuggestionsEnabled ? Icons.auto_awesome : Icons.auto_awesome_outlined,
+              ),
+              const PopupMenuDivider(),
+              // ── Sessão
+              _menuItem('ssh', l10n.sshRemote, Icons.cloud_outlined),
+              _menuItem('theme', l10n.changeTheme, Icons.palette_outlined),
+              const PopupMenuDivider(),
+              _menuItem('exit', l10n.exitApp, Icons.exit_to_app),
+            ];
+          },
           icon: Icon(Icons.more_vert, color: _theme.textMuted, size: 20),
         ),
       ],
@@ -2628,18 +2632,18 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
         builder: (context) => AlertDialog(
           backgroundColor: _theme.surface,
           title: Text(
-            'Alterações não salvas',
+            AppLocalizations.of(context)!.unsavedChanges,
             style: TextStyle(color: _theme.textPri),
           ),
           content: Text(
-            'Deseja fechar "${tab.name}"?',
+            AppLocalizations.of(context)!.closeTabConfirm(tab.name),
             style: TextStyle(color: _theme.textMuted),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
               child: Text(
-                'Cancelar',
+                AppLocalizations.of(context)!.cancel,
                 style: TextStyle(color: _theme.textMuted),
               ),
             ),
@@ -2648,8 +2652,8 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
                 Navigator.pop(context);
                 proceedClose();
               },
-              child: const Text(
-                'Descartar',
+              child: Text(
+                AppLocalizations.of(context)!.discard,
                 style: TextStyle(color: Colors.redAccent),
               ),
             ),
@@ -2660,7 +2664,7 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
                 proceedClose();
               },
               child: Text(
-                'Salvar e Fechar',
+                AppLocalizations.of(context)!.saveAndClose,
                 style: TextStyle(color: _theme.accent, fontWeight: FontWeight.bold),
               ),
             ),
@@ -2680,7 +2684,7 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
         return AlertDialog(
           backgroundColor: _theme.surface,
           title: Text(
-            'Selecionar Tema',
+            AppLocalizations.of(context)!.selectTheme,
             style: TextStyle(color: _theme.textPri, fontSize: 16, fontWeight: FontWeight.bold),
           ),
           content: SingleChildScrollView(
@@ -2769,7 +2773,7 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: Text('Fechar', style: TextStyle(color: _theme.textMuted)),
+              child: Text(AppLocalizations.of(context)!.close, style: TextStyle(color: _theme.textMuted)),
             ),
           ],
         );

@@ -3,6 +3,9 @@ import 'package:jalide/screens/editor_screen.dart';
 import 'package:jalide/services/ssh_foreground_service.dart';
 import 'package:jalide/theme/jalide_theme.dart';
 
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:jalide/l10n/app_localizations.dart';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -30,6 +33,16 @@ class JalideApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'JAL IDE',
       theme: themeType == ThemeType.light ? ThemeData.light() : ThemeData.dark(),
+      localizationsDelegates: const [
+        AppLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [
+        Locale('pt', ''),
+        Locale('en', ''),
+      ],
       home: const EditorScreen(),
     );
   }

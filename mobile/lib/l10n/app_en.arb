@@ -1,0 +1,70 @@
+{
+  "@@locale": "en",
+  
+  "newFile": "New file",
+  "saveAs": "Save as…",
+  "increaseFont": "Increase font",
+  "decreaseFont": "Decrease font",
+  "formatCode": "Format Code",
+  "autoSaveOn": "Auto-Save • ON",
+  "autoSaveOff": "Auto-Save • OFF",
+  "autoFormatOn": "Auto-Format • ON",
+  "autoFormatOff": "Auto-Format • OFF",
+  "aiSettings": "Gemma AI Config",
+  "ghostSuggestionsOn": "AI Suggestions • ON",
+  "ghostSuggestionsOff": "AI Suggestions • OFF",
+  "sshRemote": "SSH Remote",
+  "changeTheme": "Change Theme",
+  "exitApp": "Exit application",
+  
+  "runFile": "Run file",
+  "openFileToRun": "Open a file to run",
+  "save": "Save",
+  "about": "About",
+  "aiAssistant": "AI Assistant",
+  
+  "unsavedChanges": "Unsaved changes",
+  "closeTabConfirm": "Do you want to close \"{tabName}\"?",
+  "@closeTabConfirm": {
+    "placeholders": {
+      "tabName": {
+        "type": "String"
+      }
+    }
+  },
+  "cancel": "Cancel",
+  "discard": "Discard",
+  "saveAndClose": "Save and Close",
+  "close": "Close",
+  
+  "exitConfirmTitle": "Exit",
+  "exitConfirmMessage": "Are you sure you want to exit the application?",
+  "exit": "Exit",
+  
+  "selectTheme": "Select Theme",
+  "disconnect": "Disconnect",
+  
+  "fileExplorerEmptyState": "No project open",
+  "openFolder": "OPEN FOLDER",
+  "openFromTermux": "OPEN FROM TERMUX",
+  "sshActive": "SSH ACTIVE: {label}",
+  "@sshActive": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  
+  "explorerRename": "Rename",
+  "explorerNewFile": "New file",
+  "explorerNewFileSubtitle": "Create a new file in this folder",
+  "explorerNewFolder": "New folder",
+  "explorerNewFolderSubtitle": "Create a new subfolder in this folder",
+  "explorerNavigate": "Navigate",
+  "explorerNavigateSubtitle": "Set this folder as the explorer root",
+  
+  "aiGenerating": "AI generating suggestion...",
+  "toastCanceled": "Canceled",
+  "toastNoExtension": "⚠️ File with no extension — syntax highlighting may not work."
+}

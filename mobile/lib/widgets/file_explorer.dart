@@ -6,6 +6,7 @@ import '../services/ssh_service.dart';
 import '../theme/jalide_theme.dart';
 import '../utils/file_utils.dart';
 import '../utils/path_navigator.dart';
+import '../l10n/app_localizations.dart';
 import '../screens/donation_screen.dart';
 
 class FileExplorerDrawer extends StatefulWidget {
@@ -399,7 +400,7 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
                                         children: [
                                           TextButton(
                                             onPressed: () => Navigator.pop(confirmCtx, false),
-                                            child: Text('Cancelar', style: TextStyle(color: theme.textMuted)),
+                                            child: Text(AppLocalizations.of(context)!.cancel, style: TextStyle(color: theme.textMuted)),
                                           ),
                                           const SizedBox(width: 8),
                                           ElevatedButton.icon(
@@ -410,7 +411,7 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
                                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                                             ),
                                             icon: const Icon(Icons.check, size: 18),
-                                            label: const Text('Renomear'),
+                                            label: Text(AppLocalizations.of(context)!.explorerRename),
                                           ),
                                         ],
                                       ),
@@ -431,8 +432,8 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
                       _buildActionTile(
                         context,
                         icon: Icons.note_add_outlined,
-                        title: 'Novo arquivo',
-                        subtitle: 'Criar um novo arquivo dentro desta pasta',
+                        title: AppLocalizations.of(context)!.explorerNewFile,
+                        subtitle: AppLocalizations.of(context)!.explorerNewFileSubtitle,
                         accent: const Color(0xFF2AC3DE),
                         onTap: () {
                           Navigator.pop(ctx);
@@ -443,8 +444,8 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
                       _buildActionTile(
                         context,
                         icon: Icons.create_new_folder_outlined,
-                        title: 'Nova pasta',
-                        subtitle: 'Criar uma nova subpasta dentro desta pasta',
+                        title: AppLocalizations.of(context)!.explorerNewFolder,
+                        subtitle: AppLocalizations.of(context)!.explorerNewFolderSubtitle,
                         accent: const Color(0xFF9ECE6A),
                         onTap: () {
                           Navigator.pop(ctx);
@@ -455,9 +456,9 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
                       _buildActionTile(
                         context,
                         icon: Icons.folder_open_outlined,
-                        title: 'Navegar',
-                        subtitle: 'Definir esta pasta como raiz do explorador',
-                        accent: theme.accent,
+                        title: AppLocalizations.of(context)!.explorerNavigate,
+                        subtitle: AppLocalizations.of(context)!.explorerNavigateSubtitle,
+                        accent: const Color(0xFFE0AF68),
                         onTap: () {
                           Navigator.pop(ctx);
                           _navigateTo(path);

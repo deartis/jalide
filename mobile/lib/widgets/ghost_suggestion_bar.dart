@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_code_editor/flutter_code_editor.dart';
+import '../l10n/app_localizations.dart';
 import '../services/ai_service.dart';
 import '../theme/jalide_theme.dart';
 
@@ -215,7 +216,7 @@ Responda APENAS com o texto que deve ser inserido após o cursor. Se não souber
           ),
           const SizedBox(width: 8),
           Text(
-            'IA gerando sugestão...',
+            AppLocalizations.of(context)!.aiGenerating,
             style: TextStyle(
               fontSize: 11,
               color: accentColor.withValues(alpha: 0.7),

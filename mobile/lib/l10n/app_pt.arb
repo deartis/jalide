@@ -1,0 +1,70 @@
+{
+  "@@locale": "pt",
+  
+  "newFile": "Novo arquivo",
+  "saveAs": "Salvar como…",
+  "increaseFont": "Aumentar fonte",
+  "decreaseFont": "Diminuir fonte",
+  "formatCode": "Formatar Código",
+  "autoSaveOn": "Auto-Save • ON",
+  "autoSaveOff": "Auto-Save • OFF",
+  "autoFormatOn": "Auto-Format • ON",
+  "autoFormatOff": "Auto-Format • OFF",
+  "aiSettings": "Config. Gemma IA",
+  "ghostSuggestionsOn": "Sugestões IA • ON",
+  "ghostSuggestionsOff": "Sugestões IA • OFF",
+  "sshRemote": "SSH Remote",
+  "changeTheme": "Mudar Tema",
+  "exitApp": "Sair da aplicação",
+  
+  "runFile": "Executar arquivo",
+  "openFileToRun": "Abra um arquivo para executar",
+  "save": "Salvar",
+  "about": "Sobre",
+  "aiAssistant": "Assistente IA",
+  
+  "unsavedChanges": "Alterações não salvas",
+  "closeTabConfirm": "Deseja fechar \"{tabName}\"?",
+  "@closeTabConfirm": {
+    "placeholders": {
+      "tabName": {
+        "type": "String"
+      }
+    }
+  },
+  "cancel": "Cancelar",
+  "discard": "Descartar",
+  "saveAndClose": "Salvar e Fechar",
+  "close": "Fechar",
+  
+  "exitConfirmTitle": "Sair",
+  "exitConfirmMessage": "Tem certeza que deseja sair da aplicação?",
+  "exit": "Sair",
+  
+  "selectTheme": "Selecionar Tema",
+  "disconnect": "Desconectar",
+  
+  "fileExplorerEmptyState": "Nenhum projeto aberto",
+  "openFolder": "ABRIR PASTA",
+  "openFromTermux": "ABRIR DO TERMUX",
+  "sshActive": "SSH ATIVO: {label}",
+  "@sshActive": {
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  
+  "explorerRename": "Renomear",
+  "explorerNewFile": "Novo arquivo",
+  "explorerNewFileSubtitle": "Criar um novo arquivo dentro desta pasta",
+  "explorerNewFolder": "Nova pasta",
+  "explorerNewFolderSubtitle": "Criar uma nova subpasta dentro desta pasta",
+  "explorerNavigate": "Navegar",
+  "explorerNavigateSubtitle": "Definir esta pasta como raiz do explorador",
+  
+  "aiGenerating": "IA gerando sugestão...",
+  "toastCanceled": "Cancelado",
+  "toastNoExtension": "⚠️ Arquivo sem extensão — o realce de sintaxe pode não funcionar."
+}
