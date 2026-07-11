@@ -85,4 +85,61 @@ class CodeFormatter {
 
     return formattedLines.join('\n');
   }
+
+  /// Calcula a nova posição do cursor (offset) após a formatação do código,
+  /// mantendo a posição relativa do cursor na linha correspondente.
+  static int getFormattedOffset(String originalText, String formattedText, int oldOffset) {
+    if (oldOffset <= 0) return 0;
+    if (oldOffset >= originalText.length) return formattedText.length;
+
+    int currentLineIndex = 0;
+    int currentColumnIndex = 0;
+
+    for (int i = 0; i < oldOffset; i++) {
+      if (originalText[i] == '\n') {
+        currentLineIndex++;
+        currentColumnIndex = 0;
+      } else {
+        currentColumnIndex++;
+      }
+    }
+
+    final originalLines = originalText.split('\n');
+    final formattedLines = formattedText.split('\n');
+
+    if (originalLines.length != formattedLines.length) {
+      return oldOffset.clamp(0, formattedText.length);
+    }
+
+    final origLine = originalLines[currentLineIndex];
+    final fmtLine = formattedLines[currentLineIndex];
+
+    final trimmedOrig = origLine.trimLeft();
+    final origLeadingSpaceCount = origLine.length - trimmedOrig.length;
+    final trimmedOrigFully = trimmedOrig.trimRight();
+    final trimmedLength = trimmedOrigFully.length;
+
+    final trimmedFmt = fmtLine.trimLeft();
+    final fmtLeadingSpaceCount = fmtLine.length - trimmedFmt.length;
+
+    int newColumnIndex;
+    if (currentColumnIndex == 0) {
+      newColumnIndex = 0;
+    } else if (currentColumnIndex <= origLeadingSpaceCount) {
+      newColumnIndex = fmtLeadingSpaceCount;
+    } else if (currentColumnIndex <= origLeadingSpaceCount + trimmedLength) {
+      final k = currentColumnIndex - origLeadingSpaceCount;
+      newColumnIndex = fmtLeadingSpaceCount + k;
+    } else {
+      newColumnIndex = fmtLeadingSpaceCount + trimmedLength;
+    }
+
+    int newOffset = 0;
+    for (int i = 0; i < currentLineIndex; i++) {
+      newOffset += formattedLines[i].length + 1; // +1 para o '\n'
+    }
+    newOffset += newColumnIndex;
+
+    return newOffset.clamp(0, formattedText.length);
+  }
 }

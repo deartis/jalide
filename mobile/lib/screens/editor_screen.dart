@@ -1409,15 +1409,31 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
       if (formatted != text) {
         _tabController.forceRecordActiveTabHistory();
         final selection = controller.selection;
+        
+        TextSelection newSelection;
+        if (selection.isValid) {
+          if (selection.isCollapsed) {
+            final newOffset = CodeFormatter.getFormattedOffset(text, formatted, selection.baseOffset);
+            newSelection = TextSelection.collapsed(offset: newOffset);
+          } else {
+            final newBase = CodeFormatter.getFormattedOffset(text, formatted, selection.baseOffset);
+            final newExtent = CodeFormatter.getFormattedOffset(text, formatted, selection.extentOffset);
+            newSelection = TextSelection(
+              baseOffset: newBase,
+              extentOffset: newExtent,
+              affinity: selection.affinity,
+              isDirectional: selection.isDirectional,
+            );
+          }
+        } else {
+          newSelection = const TextSelection.collapsed(offset: -1);
+        }
+
         // Sinaliza que estamos formatando para suprimir o loop de auto-save
         _isFormatting = true;
         controller.value = controller.value.copyWith(
           text: formatted,
-          selection: selection.isValid
-              ? TextSelection.collapsed(
-                  offset: selection.baseOffset.clamp(0, formatted.length),
-                )
-              : const TextSelection.collapsed(offset: -1),
+          selection: newSelection,
         );
         _isFormatting = false;
         if (!silent) {
@@ -1934,13 +1950,42 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
 
   Future<void> _showCreateDialog(bool isFile, String? basePath) async {
     final controller = TextEditingController();
+    
+    String displayPath = 'raiz';
+    if (basePath != null && _projectPath != null && basePath != _projectPath) {
+      try {
+        if (_isRemoteProject) {
+          displayPath = p.posix.relative(basePath, from: _projectPath);
+        } else {
+          displayPath = p.relative(basePath, from: _projectPath);
+        }
+      } catch (e) {
+        displayPath = p.basename(basePath);
+      }
+    }
+
     final name = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: _theme.surface,
-        title: Text(
-          isFile ? 'Novo arquivo' : 'Nova pasta',
-          style: TextStyle(color: _theme.textPri),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              isFile ? 'Novo arquivo' : 'Nova pasta',
+              style: TextStyle(color: _theme.textPri),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Em: $displayPath',
+              style: TextStyle(
+                color: _theme.textMuted,
+                fontSize: 12,
+                fontWeight: FontWeight.normal,
+              ),
+            ),
+          ],
         ),
         content: TextField(
           controller: controller,

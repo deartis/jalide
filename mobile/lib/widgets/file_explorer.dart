@@ -83,6 +83,15 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
     });
   }
 
+  void _clearSelection() {
+    if (widget.projectPath != null) {
+      setState(() {
+        _selectedPath = widget.projectPath;
+        _isSelectedPathDir = true;
+      });
+    }
+  }
+
   void _showItemActions({
     required String path,
     required bool isDir,
@@ -664,37 +673,51 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Icon(
-                      Icons.folder_copy_outlined,
-                      color: theme.accent,
-                      size: 22,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        widget.projectPath == null
-                            ? 'EXPLORER'
-                            : widget.isRemoteProject
-                            ? 'REMOTE: ${p.basename(widget.projectPath!)}'
-                            : FileUtils.getDisplayName(
-                                widget.projectPath!,
-                                uppercase: true,
-                              ),
-                        style: TextStyle(
-                          color: widget.isRemoteProject
-                              ? theme.accent
-                              : theme.textPri,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                          letterSpacing: 0.5,
+                InkWell(
+                  onTap: _clearSelection,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                    decoration: _selectedPath == widget.projectPath
+                        ? BoxDecoration(
+                            color: theme.accent.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: theme.accent.withValues(alpha: 0.3), width: 1),
+                          )
+                        : null,
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.folder_copy_outlined,
+                          color: theme.accent,
+                          size: 22,
                         ),
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 1,
-                      ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            widget.projectPath == null
+                                ? 'EXPLORER'
+                                : widget.isRemoteProject
+                                ? 'REMOTE: ${p.basename(widget.projectPath!)}'
+                                : FileUtils.getDisplayName(
+                                    widget.projectPath!,
+                                    uppercase: true,
+                                  ),
+                            style: TextStyle(
+                              color: widget.isRemoteProject
+                                  ? theme.accent
+                                  : theme.textPri,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                              letterSpacing: 0.5,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
                 const SizedBox(height: 12),
                 Row(

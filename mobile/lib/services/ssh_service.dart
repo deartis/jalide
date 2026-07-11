@@ -1,9 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:dartssh2/dartssh2.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
+import 'file_service.dart';
 
 // ─── Modelo de Conexão SSH ───────────────────────────────────────────────────
 
@@ -105,6 +108,20 @@ class SshSession {
 
   Future<void> connect() async {
     state = SshConnectionState.connecting;
+
+    if (Platform.isAndroid && (profile.host == '127.0.0.1' || profile.host == 'localhost')) {
+      try {
+        debugPrint('🚀 [SshSession] Solicitando inicialização do sshd no Termux...');
+        await FileService.channel.invokeMethod('runTermuxCommand', {
+          'script': 'pgrep sshd || sshd',
+        });
+        debugPrint('✅ [SshSession] Comando de inicialização do sshd enviado ao Termux.');
+        // Pequeno delay para dar tempo ao daemon do sshd de inicializar e escutar a porta
+        await Future.delayed(const Duration(milliseconds: 600));
+      } catch (e) {
+        debugPrint('⚠️ [SshSession] Erro ao tentar iniciar sshd no Termux: $e');
+      }
+    }
 
     final socket = await SSHSocket.connect(
       profile.host,
