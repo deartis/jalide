@@ -244,9 +244,15 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
   /// Recebe dados enviados pelo TaskHandler do Foreground Service.
   /// Atualmente usado para processar o botão "Desconectar" da notificação.
   void _onForegroundServiceData(Object data) {
-    if (data is Map<String, dynamic> && data['action'] == 'disconnect') {
-      debugPrint('📲 Botão desconectar da notificação pressionado.');
-      _sshConnectionManager.disconnect();
+    if (data is Map<String, dynamic>) {
+      final action = data['action'];
+      if (action == 'disconnect') {
+        debugPrint('📲 Botão desconectar da notificação pressionado.');
+        _sshConnectionManager.disconnect();
+      } else if (action == 'exit') {
+        debugPrint('📲 Botão sair da notificação pressionado. Encerrando app...');
+        exit(0);
+      }
     }
   }
 

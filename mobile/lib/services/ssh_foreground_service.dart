@@ -37,6 +37,11 @@ class _SshKeepAliveTaskHandler extends TaskHandler {
     // Botão "Desconectar" na notificação
     if (id == 'btn_disconnect') {
       FlutterForegroundTask.sendDataToMain({'action': 'disconnect'});
+      FlutterForegroundTask.stopService();
+    } else if (id == 'btn_exit') {
+      FlutterForegroundTask.sendDataToMain({'action': 'exit'});
+      FlutterForegroundTask.stopService();
+      exit(0);
     }
   }
 
@@ -97,6 +102,7 @@ class SshForegroundService {
           notificationText: profileLabel,
           notificationButtons: [
             const NotificationButton(id: 'btn_disconnect', text: 'Desconectar'),
+            const NotificationButton(id: 'btn_exit', text: 'Sair'),
           ],
           callback: _sshForegroundCallback,
         );

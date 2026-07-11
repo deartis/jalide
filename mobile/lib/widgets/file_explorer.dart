@@ -425,6 +425,30 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
                       const Divider(height: 1, color: Color(0x1FFFFFFF)),
                       _buildActionTile(
                         context,
+                        icon: Icons.note_add_outlined,
+                        title: 'Novo arquivo',
+                        subtitle: 'Criar um novo arquivo dentro desta pasta',
+                        accent: const Color(0xFF2AC3DE),
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          widget.onCreateFile(path);
+                        },
+                      ),
+                      const Divider(height: 1, color: Color(0x1FFFFFFF)),
+                      _buildActionTile(
+                        context,
+                        icon: Icons.create_new_folder_outlined,
+                        title: 'Nova pasta',
+                        subtitle: 'Criar uma nova subpasta dentro desta pasta',
+                        accent: const Color(0xFF9ECE6A),
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          widget.onCreateFolder(path);
+                        },
+                      ),
+                      const Divider(height: 1, color: Color(0x1FFFFFFF)),
+                      _buildActionTile(
+                        context,
                         icon: Icons.folder_open_outlined,
                         title: 'Navegar',
                         subtitle: 'Definir esta pasta como raiz do explorador',
