@@ -18,8 +18,16 @@ class FileExplorerDrawer extends StatefulWidget {
   final VoidCallback onOpenTermux;
   final void Function(String?) onCreateFile;
   final void Function(String?) onCreateFolder;
-  final void Function(String path, bool isDir, bool isRemote, bool isSaf) onDeleteItem;
-  final void Function(String path, String newName, bool isDir, bool isRemote, bool isSaf) onRenameItem;
+  final void Function(String path, bool isDir, bool isRemote, bool isSaf)
+  onDeleteItem;
+  final void Function(
+    String path,
+    String newName,
+    bool isDir,
+    bool isRemote,
+    bool isSaf,
+  )
+  onRenameItem;
   final MethodChannel termuxChannel;
   final SshSession? sshSession;
   final bool isRemoteProject;
@@ -75,8 +83,6 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
       widget.onNavigateFolder(path);
     }
   }
-
-
 
   void _selectFolderInTree(String path) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -139,8 +145,9 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
-                  borderRadius:
-                      const BorderRadius.vertical(top: Radius.circular(24)),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(24),
+                  ),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -154,7 +161,9 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
                             borderRadius: BorderRadius.circular(14),
                           ),
                           child: Icon(
-                            isDir ? Icons.folder_rounded : Icons.insert_drive_file,
+                            isDir
+                                ? Icons.folder_rounded
+                                : Icons.insert_drive_file,
                             color: theme.accent,
                             size: 22,
                           ),
@@ -179,10 +188,7 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
                       isDir
                           ? 'Pasta • ações disponíveis'
                           : 'Arquivo • ações disponíveis',
-                      style: TextStyle(
-                        color: theme.textMuted,
-                        fontSize: 12,
-                      ),
+                      style: TextStyle(color: theme.textMuted, fontSize: 12),
                     ),
                   ],
                 ),
@@ -213,25 +219,33 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
 
                                 return Dialog(
                                   backgroundColor: Colors.transparent,
-                                  insetPadding: const EdgeInsets.symmetric(horizontal: 20),
+                                  insetPadding: const EdgeInsets.symmetric(
+                                    horizontal: 20,
+                                  ),
                                   child: Container(
                                     padding: const EdgeInsets.all(20),
                                     decoration: BoxDecoration(
                                       color: theme.surface,
                                       borderRadius: BorderRadius.circular(24),
-                                      border: Border.all(color: theme.border, width: 1),
+                                      border: Border.all(
+                                        color: theme.border,
+                                        width: 1,
+                                      ),
                                     ),
                                     child: Column(
                                       mainAxisSize: MainAxisSize.min,
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Row(
                                           children: [
                                             Container(
                                               padding: const EdgeInsets.all(12),
                                               decoration: BoxDecoration(
-                                                color: Colors.redAccent.withValues(alpha: 0.12),
-                                                borderRadius: BorderRadius.circular(16),
+                                                color: Colors.redAccent
+                                                    .withValues(alpha: 0.12),
+                                                borderRadius:
+                                                    BorderRadius.circular(16),
                                               ),
                                               child: const Icon(
                                                 Icons.delete_forever,
@@ -271,43 +285,68 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
                                           },
                                           decoration: InputDecoration(
                                             hintText: label,
-                                            hintStyle: TextStyle(color: theme.textMuted),
+                                            hintStyle: TextStyle(
+                                              color: theme.textMuted,
+                                            ),
                                             enabledBorder: OutlineInputBorder(
-                                              borderRadius: BorderRadius.circular(14),
-                                              borderSide: BorderSide(color: theme.border),
+                                              borderRadius:
+                                                  BorderRadius.circular(14),
+                                              borderSide: BorderSide(
+                                                color: theme.border,
+                                              ),
                                             ),
                                             focusedBorder: OutlineInputBorder(
-                                              borderRadius: BorderRadius.circular(14),
-                                              borderSide: BorderSide(color: Colors.redAccent),
+                                              borderRadius:
+                                                  BorderRadius.circular(14),
+                                              borderSide: BorderSide(
+                                                color: Colors.redAccent,
+                                              ),
                                             ),
-                                            contentPadding: const EdgeInsets.symmetric(
-                                              horizontal: 14,
-                                              vertical: 14,
-                                            ),
+                                            contentPadding:
+                                                const EdgeInsets.symmetric(
+                                                  horizontal: 14,
+                                                  vertical: 14,
+                                                ),
                                           ),
                                         ),
                                         const SizedBox(height: 18),
                                         Row(
-                                          mainAxisAlignment: MainAxisAlignment.end,
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.end,
                                           children: [
                                             TextButton(
-                                              onPressed: () => Navigator.pop(confirmCtx, false),
+                                              onPressed: () => Navigator.pop(
+                                                confirmCtx,
+                                                false,
+                                              ),
                                               child: Text(
                                                 'Cancelar',
-                                                style: TextStyle(color: theme.textMuted),
+                                                style: TextStyle(
+                                                  color: theme.textMuted,
+                                                ),
                                               ),
                                             ),
                                             const SizedBox(width: 8),
                                             ElevatedButton.icon(
-                                              onPressed: canConfirm ? () => Navigator.pop(confirmCtx, true) : null,
+                                              onPressed: canConfirm
+                                                  ? () => Navigator.pop(
+                                                      confirmCtx,
+                                                      true,
+                                                    )
+                                                  : null,
                                               style: ElevatedButton.styleFrom(
-                                                backgroundColor: Colors.redAccent,
+                                                backgroundColor:
+                                                    Colors.redAccent,
                                                 foregroundColor: Colors.white,
                                                 shape: RoundedRectangleBorder(
-                                                  borderRadius: BorderRadius.circular(12),
+                                                  borderRadius:
+                                                      BorderRadius.circular(12),
                                                 ),
                                               ),
-                                              icon: const Icon(Icons.delete_outline, size: 18),
+                                              icon: const Icon(
+                                                Icons.delete_outline,
+                                                size: 18,
+                                              ),
                                               label: const Text('Excluir'),
                                             ),
                                           ],
@@ -330,7 +369,9 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
                       context,
                       icon: Icons.edit_outlined,
                       title: 'Renomear',
-                      subtitle: isDir ? 'Renomear esta pasta' : 'Renomear este arquivo',
+                      subtitle: isDir
+                          ? 'Renomear esta pasta'
+                          : 'Renomear este arquivo',
                       accent: const Color(0xFF7AA2F7),
                       onTap: () async {
                         Navigator.pop(ctx);
@@ -340,36 +381,55 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
                           barrierDismissible: false,
                           builder: (confirmCtx) => StatefulBuilder(
                             builder: (dialogContext, setState) {
-                              final canConfirm = typedValue.trim().isNotEmpty && typedValue.trim() != label;
+                              final canConfirm =
+                                  typedValue.trim().isNotEmpty &&
+                                  typedValue.trim() != label;
                               return Dialog(
                                 backgroundColor: Colors.transparent,
-                                insetPadding: const EdgeInsets.symmetric(horizontal: 20),
+                                insetPadding: const EdgeInsets.symmetric(
+                                  horizontal: 20,
+                                ),
                                 child: Container(
                                   padding: const EdgeInsets.all(20),
                                   decoration: BoxDecoration(
                                     color: theme.surface,
                                     borderRadius: BorderRadius.circular(24),
-                                    border: Border.all(color: theme.border, width: 1),
+                                    border: Border.all(
+                                      color: theme.border,
+                                      width: 1,
+                                    ),
                                   ),
                                   child: Column(
                                     mainAxisSize: MainAxisSize.min,
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Row(
                                         children: [
                                           Container(
                                             padding: const EdgeInsets.all(12),
                                             decoration: BoxDecoration(
-                                              color: const Color(0xFF7AA2F7).withValues(alpha: 0.12),
-                                              borderRadius: BorderRadius.circular(16),
+                                              color: const Color(
+                                                0xFF7AA2F7,
+                                              ).withValues(alpha: 0.12),
+                                              borderRadius:
+                                                  BorderRadius.circular(16),
                                             ),
-                                            child: const Icon(Icons.edit, color: Color(0xFF7AA2F7), size: 24),
+                                            child: const Icon(
+                                              Icons.edit,
+                                              color: Color(0xFF7AA2F7),
+                                              size: 24,
+                                            ),
                                           ),
                                           const SizedBox(width: 14),
                                           Expanded(
                                             child: Text(
                                               'Renomear',
-                                              style: TextStyle(color: theme.textPri, fontWeight: FontWeight.bold, fontSize: 18),
+                                              style: TextStyle(
+                                                color: theme.textPri,
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 18,
+                                              ),
                                             ),
                                           ),
                                         ],
@@ -377,7 +437,11 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
                                       const SizedBox(height: 16),
                                       Text(
                                         'Digite o novo nome para ${isDir ? 'a pasta' : 'o arquivo'}:',
-                                        style: TextStyle(color: theme.textMuted, fontSize: 14, height: 1.4),
+                                        style: TextStyle(
+                                          color: theme.textMuted,
+                                          fontSize: 14,
+                                          height: 1.4,
+                                        ),
                                       ),
                                       const SizedBox(height: 14),
                                       TextFormField(
@@ -389,29 +453,75 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
                                         },
                                         style: TextStyle(color: theme.textPri),
                                         decoration: InputDecoration(
-                                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: theme.border)),
-                                          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFF7AA2F7))),
-                                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                                          enabledBorder: OutlineInputBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              14,
+                                            ),
+                                            borderSide: BorderSide(
+                                              color: theme.border,
+                                            ),
+                                          ),
+                                          focusedBorder: OutlineInputBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              14,
+                                            ),
+                                            borderSide: const BorderSide(
+                                              color: Color(0xFF7AA2F7),
+                                            ),
+                                          ),
+                                          contentPadding:
+                                              const EdgeInsets.symmetric(
+                                                horizontal: 14,
+                                                vertical: 14,
+                                              ),
                                         ),
                                       ),
                                       const SizedBox(height: 18),
                                       Row(
-                                        mainAxisAlignment: MainAxisAlignment.end,
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.end,
                                         children: [
                                           TextButton(
-                                            onPressed: () => Navigator.pop(confirmCtx, false),
-                                            child: Text(AppLocalizations.of(context)!.cancel, style: TextStyle(color: theme.textMuted)),
+                                            onPressed: () => Navigator.pop(
+                                              confirmCtx,
+                                              false,
+                                            ),
+                                            child: Text(
+                                              AppLocalizations.of(
+                                                context,
+                                              )!.cancel,
+                                              style: TextStyle(
+                                                color: theme.textMuted,
+                                              ),
+                                            ),
                                           ),
                                           const SizedBox(width: 8),
                                           ElevatedButton.icon(
-                                            onPressed: canConfirm ? () => Navigator.pop(confirmCtx, typedValue.trim()) : null,
+                                            onPressed: canConfirm
+                                                ? () => Navigator.pop(
+                                                    confirmCtx,
+                                                    typedValue.trim(),
+                                                  )
+                                                : null,
                                             style: ElevatedButton.styleFrom(
-                                              backgroundColor: const Color(0xFF7AA2F7),
+                                              backgroundColor: const Color(
+                                                0xFF7AA2F7,
+                                              ),
                                               foregroundColor: Colors.white,
-                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                              shape: RoundedRectangleBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(12),
+                                              ),
                                             ),
-                                            icon: const Icon(Icons.check, size: 18),
-                                            label: Text(AppLocalizations.of(context)!.explorerRename),
+                                            icon: const Icon(
+                                              Icons.check,
+                                              size: 18,
+                                            ),
+                                            label: Text(
+                                              AppLocalizations.of(
+                                                context,
+                                              )!.explorerRename,
+                                            ),
                                           ),
                                         ],
                                       ),
@@ -423,7 +533,13 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
                           ),
                         );
                         if (newName != null) {
-                          widget.onRenameItem(path, newName, isDir, isRemote, isSaf);
+                          widget.onRenameItem(
+                            path,
+                            newName,
+                            isDir,
+                            isRemote,
+                            isSaf,
+                          );
                         }
                       },
                     ),
@@ -433,7 +549,9 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
                         context,
                         icon: Icons.note_add_outlined,
                         title: AppLocalizations.of(context)!.explorerNewFile,
-                        subtitle: AppLocalizations.of(context)!.explorerNewFileSubtitle,
+                        subtitle: AppLocalizations.of(
+                          context,
+                        )!.explorerNewFileSubtitle,
                         accent: const Color(0xFF2AC3DE),
                         onTap: () {
                           Navigator.pop(ctx);
@@ -445,7 +563,9 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
                         context,
                         icon: Icons.create_new_folder_outlined,
                         title: AppLocalizations.of(context)!.explorerNewFolder,
-                        subtitle: AppLocalizations.of(context)!.explorerNewFolderSubtitle,
+                        subtitle: AppLocalizations.of(
+                          context,
+                        )!.explorerNewFolderSubtitle,
                         accent: const Color(0xFF9ECE6A),
                         onTap: () {
                           Navigator.pop(ctx);
@@ -457,7 +577,9 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
                         context,
                         icon: Icons.folder_open_outlined,
                         title: AppLocalizations.of(context)!.explorerNavigate,
-                        subtitle: AppLocalizations.of(context)!.explorerNavigateSubtitle,
+                        subtitle: AppLocalizations.of(
+                          context,
+                        )!.explorerNavigateSubtitle,
                         accent: const Color(0xFFE0AF68),
                         onTap: () {
                           Navigator.pop(ctx);
@@ -533,10 +655,7 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
                   const SizedBox(height: 2),
                   Text(
                     subtitle,
-                    style: TextStyle(
-                      color: theme.textMuted,
-                      fontSize: 12,
-                    ),
+                    style: TextStyle(color: theme.textMuted, fontSize: 12),
                   ),
                 ],
               ),
@@ -563,40 +682,45 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
     }
   }
 
-  Future<List<Map<String, dynamic>>> _getDirFuture(String path, bool isRemote, bool isSaf) {
+  Future<List<Map<String, dynamic>>> _getDirFuture(
+    String path,
+    bool isRemote,
+    bool isSaf,
+  ) {
     return _expandedDirsCache.putIfAbsent(path, () {
       if (isRemote) {
         return widget.sshSession
-              ?.listDir(path)
-              .then(
-                (res) => res
-                    .map(
-                      (f) => {
-                        'name': f.name,
-                        'path': f.path,
-                        'isDir': f.isDir,
-                        'isSaf': false,
-                        'isRemote': true,
-                      },
-                    )
-                    .toList(),
-              ) ?? Future.value([]);
+                ?.listDir(path)
+                .then(
+                  (res) => res
+                      .map(
+                        (f) => {
+                          'name': f.name,
+                          'path': f.path,
+                          'isDir': f.isDir,
+                          'isSaf': false,
+                          'isRemote': true,
+                        },
+                      )
+                      .toList(),
+                ) ??
+            Future.value([]);
       } else if (isSaf) {
         return widget.termuxChannel
-              .invokeMethod('listSafDirectory', {'uri': path})
-              .then(
-                (res) => (res as List)
-                    .map(
-                      (f) => {
-                        'name': f['name'] as String,
-                        'path': f['uri'] as String,
-                        'isDir': f['isDir'] as bool,
-                        'isSaf': true,
-                        'isRemote': false,
-                      },
-                    )
-                    .toList(),
-              );
+            .invokeMethod('listSafDirectory', {'uri': path})
+            .then(
+              (res) => (res as List)
+                  .map(
+                    (f) => {
+                      'name': f['name'] as String,
+                      'path': f['uri'] as String,
+                      'isDir': f['isDir'] as bool,
+                      'isSaf': true,
+                      'isRemote': false,
+                    },
+                  )
+                  .toList(),
+            );
       } else {
         return Directory(path).list().toList().then((list) {
           list.sort((a, b) {
@@ -707,12 +831,18 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
                   onTap: _clearSelection,
                   borderRadius: BorderRadius.circular(8),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 4,
+                      horizontal: 8,
+                    ),
                     decoration: _selectedPath == widget.projectPath
                         ? BoxDecoration(
                             color: theme.accent.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: theme.accent.withValues(alpha: 0.3), width: 1),
+                            border: Border.all(
+                              color: theme.accent.withValues(alpha: 0.3),
+                              width: 1,
+                            ),
                           )
                         : null,
                     child: Row(
@@ -758,8 +888,8 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
                           final targetPath = _isSelectedPathDir
                               ? _selectedPath
                               : (widget.isRemoteProject
-                                  ? p.posix.dirname(_selectedPath!)
-                                  : p.dirname(_selectedPath!));
+                                    ? p.posix.dirname(_selectedPath!)
+                                    : p.dirname(_selectedPath!));
                           widget.onCreateFile(targetPath);
                         },
                         icon: Icon(
@@ -777,8 +907,8 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
                           final targetPath = _isSelectedPathDir
                               ? _selectedPath
                               : (widget.isRemoteProject
-                                  ? p.posix.dirname(_selectedPath!)
-                                  : p.dirname(_selectedPath!));
+                                    ? p.posix.dirname(_selectedPath!)
+                                    : p.dirname(_selectedPath!));
                           widget.onCreateFolder(targetPath);
                         },
                         icon: Icon(
@@ -824,10 +954,7 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
                         .toList(),
                   ),
           ),
-          Divider(
-            height: 1,
-            color: theme.accent.withValues(alpha: 0.15),
-          ),
+          Divider(height: 1, color: theme.accent.withValues(alpha: 0.15)),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: InkWell(
@@ -838,7 +965,10 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
               },
               borderRadius: BorderRadius.circular(8),
               child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 10,
+                  horizontal: 12,
+                ),
                 decoration: BoxDecoration(
                   color: theme.accent.withValues(alpha: 0.05),
                   borderRadius: BorderRadius.circular(8),
@@ -1008,7 +1138,9 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
                       onTap: () {
                         final pathToNavigate = i == 0 && !Platform.isWindows
                             ? '/'
-                            : segments.sublist(0, i + 1).join(Platform.pathSeparator);
+                            : segments
+                                  .sublist(0, i + 1)
+                                  .join(Platform.pathSeparator);
                         _navigateTo(pathToNavigate);
                       },
                       child: Container(

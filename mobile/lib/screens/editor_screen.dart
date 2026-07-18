@@ -111,10 +111,10 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
   // BUG2 FIX: Um timer por path de aba para evitar race condition no auto-save
   final Map<String, Timer> _autoSaveTimers = {};
   bool _isFormatting = false; // Guard contra loop de auto-save durante formatação
-  Completer<void>? _formattingCompleter;
 
   // Teclado auxiliar
   bool _ctrlActive = false;
+  bool _showAuxKeyboard = true;
 
   List<String> get _currentAuxKeys {
     if (_ctrlActive) {
@@ -1553,26 +1553,20 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
           }
         } else {
           newSelection = TextSelection.collapsed(
-            offset: controller.text.length.clamp(0, controller.text.length),
+            offset: formatted.length,
           );
         }
 
-        // BUG3 FIX: sinaliza formatação e reseta via microtask para ser async-safe
         _isFormatting = true;
-        _formattingCompleter?.complete();
-        _formattingCompleter = Completer<void>();
-        final completer = _formattingCompleter!;
-        controller.value = controller.value.copyWith(
-          text: formatted,
-          selection: newSelection,
-        );
-        // Garante que _isFormatting é resetado após todos os listeners do frame
-        Future.microtask(() {
-          if (!completer.isCompleted) {
-            _isFormatting = false;
-            completer.complete();
-          }
-        });
+        try {
+          controller.value = controller.value.copyWith(
+            text: formatted,
+            selection: newSelection,
+          );
+        } finally {
+          _isFormatting = false;
+        }
+
         if (!silent) {
           _showToast('Código formatado com sucesso', type: _ToastType.success);
         }
@@ -1582,9 +1576,6 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
         }
       }
     } catch (e) {
-      // BUG3 FIX: reseta _isFormatting mesmo em erro, via microtask
-      _formattingCompleter?.complete();
-      Future.microtask(() => _isFormatting = false);
       if (!silent) {
         _showToast('Erro ao formatar: $e', type: _ToastType.error);
       }
@@ -2461,15 +2452,27 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
                 enabled: _ghostSuggestionsEnabled,
                 aiService: _aiService,
               ),
-            AuxKeyboard(
-              auxKeys: _currentAuxKeys,
-              ctrlActive: _ctrlActive,
-              onKeyTap: _handleAuxKeyTap,
-              isTerminalMode: _isTerminalActive,
-            ),
+            if (_showAuxKeyboard)
+              AuxKeyboard(
+                auxKeys: _currentAuxKeys,
+                ctrlActive: _ctrlActive,
+                onKeyTap: _handleAuxKeyTap,
+                isTerminalMode: _isTerminalActive,
+                onClose: () {
+                  setState(() {
+                    _showAuxKeyboard = false;
+                  });
+                },
+              ),
             StatusBar(
               languageName: _languageName,
               hasUnsavedChanges: _activeHasUnsavedChanges,
+              isAuxKeyboardVisible: _showAuxKeyboard,
+              onAuxKeyboardToggle: () {
+                setState(() {
+                  _showAuxKeyboard = !_showAuxKeyboard;
+                });
+              },
               // Mostra o chip SSH na status bar apenas com projeto remoto ativo
               sshConnectionManager: _isRemoteProject ? _sshConnectionManager : null,
               onSshTap: _isRemoteProject

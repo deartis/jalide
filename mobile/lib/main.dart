@@ -17,12 +17,7 @@ void main() async {
   final initialTheme = await ThemeProvider.loadTheme();
   _themeNotifier = ValueNotifier(initialTheme);
 
-  runApp(
-    ThemeProvider(
-      notifier: _themeNotifier,
-      child: const JalideApp(),
-    ),
-  );
+  runApp(ThemeProvider(notifier: _themeNotifier, child: const JalideApp()));
 }
 
 class JalideApp extends StatelessWidget {
@@ -35,17 +30,16 @@ class JalideApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'JAL IDE',
-      theme: themeType == ThemeType.light ? ThemeData.light() : ThemeData.dark(),
+      theme: themeType == ThemeType.light
+          ? ThemeData.light()
+          : ThemeData.dark(),
       localizationsDelegates: const [
         AppLocalizations.delegate,
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      supportedLocales: const [
-        Locale('pt', ''),
-        Locale('en', ''),
-      ],
+      supportedLocales: const [Locale('pt', ''), Locale('en', '')],
       home: const EditorScreen(),
     );
   }

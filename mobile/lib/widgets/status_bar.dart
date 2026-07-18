@@ -8,6 +8,8 @@ class StatusBar extends StatelessWidget {
   final bool hasUnsavedChanges;
   final VoidCallback onTerminalToggle;
   final VoidCallback? onLanguageTap;
+  final bool isAuxKeyboardVisible;
+  final VoidCallback onAuxKeyboardToggle;
 
   // Indicador SSH opcional — passa null quando não há sessão SSH
   final SshConnectionManager? sshConnectionManager;
@@ -18,6 +20,8 @@ class StatusBar extends StatelessWidget {
     required this.languageName,
     required this.hasUnsavedChanges,
     required this.onTerminalToggle,
+    required this.isAuxKeyboardVisible,
+    required this.onAuxKeyboardToggle,
     this.onLanguageTap,
     this.sshConnectionManager,
     this.onSshTap,
@@ -53,6 +57,15 @@ class StatusBar extends StatelessWidget {
             constraints: const BoxConstraints(minHeight: 40),
             child: _sbChip(theme, 'UTF-8'),
           ),
+          const SizedBox(width: 12),
+          ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 40),
+            child: GestureDetector(
+              onTap: onAuxKeyboardToggle,
+              behavior: HitTestBehavior.opaque,
+              child: _sbChip(theme, '⌨ Teclado', isMuted: !isAuxKeyboardVisible),
+            ),
+          ),
           const Spacer(),
           // Indicador SSH discreto — só aparece quando há sessão ativa
           if (sshConnectionManager != null)
@@ -66,13 +79,16 @@ class StatusBar extends StatelessWidget {
     );
   }
 
-  Widget _sbChip(JalideThemeVariant theme, String text) => Text(
-    text,
-    style: TextStyle(
-      color: theme.bg,
-      fontFamily: 'monospace',
-      fontSize: 10,
-      fontWeight: FontWeight.bold,
+  Widget _sbChip(JalideThemeVariant theme, String text, {bool isMuted = false}) => Align(
+    alignment: Alignment.center,
+    child: Text(
+      text,
+      style: TextStyle(
+        color: isMuted ? theme.bg.withValues(alpha: 0.5) : theme.bg,
+        fontFamily: 'monospace',
+        fontSize: 10,
+        fontWeight: FontWeight.bold,
+      ),
     ),
   );
 }

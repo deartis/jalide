@@ -22,6 +22,7 @@ class AuxKeyboard extends StatefulWidget {
   final bool ctrlActive;
   final Function(String) onKeyTap;
   final bool isTerminalMode;
+  final VoidCallback? onClose;
 
   const AuxKeyboard({
     super.key,
@@ -29,6 +30,7 @@ class AuxKeyboard extends StatefulWidget {
     this.ctrlActive = false,
     required this.onKeyTap,
     this.isTerminalMode = false,
+    this.onClose,
   });
 
   @override
@@ -190,6 +192,22 @@ class _AuxKeyboardState extends State<AuxKeyboard> {
               ],
             ),
           ),
+          if (widget.onClose != null)
+            GestureDetector(
+              onTap: widget.onClose,
+              behavior: HitTestBehavior.opaque,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                decoration: BoxDecoration(
+                  border: Border(left: BorderSide(color: theme.border, width: 0.5)),
+                ),
+                child: Icon(
+                  Icons.keyboard_hide_rounded,
+                  size: 14,
+                  color: theme.textMuted,
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -203,24 +221,64 @@ class _AuxKeyboardState extends State<AuxKeyboard> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // ── Lado esquerdo: Tab, Esc (Home, End e Sel removidos) ──────────
-          Expanded(
-            flex: 3,
+          // ── Lado esquerdo: Tab e Esc (um acima do outro) ──────────────────
+          SizedBox(
+            width: 55,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _navKey(theme, _Key('Tab', value: 'Tab', isAccent: true), height: 45),
+                _navKey(theme, _Key('Tab', value: 'Tab', isAccent: true), height: 30),
                 const SizedBox(height: 4),
-                _navKey(theme, _Key('Esc', value: 'ESC', isAccent: true), height: 45),
+                _navKey(theme, _Key('Esc', value: 'ESC', isAccent: true), height: 30),
               ],
             ),
           ),
 
-          const SizedBox(width: 8),
+          // ── Centro/Responsivo: Teclas extras ──────────────────────────────
+          Expanded(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                SizedBox(
+                  width: 32,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _navKey(theme, const _Key('`', value: '`'), height: 30),
+                      const SizedBox(height: 4),
+                      _navKey(theme, const _Key('/', value: '/'), height: 30),
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  width: 32,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _navKey(theme, const _Key('<', value: '<'), height: 30),
+                      const SizedBox(height: 4),
+                      _navKey(theme, const _Key('>', value: '>'), height: 30),
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  width: 32,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _navKey(theme, const _Key('|', value: '|'), height: 30),
+                      const SizedBox(height: 4),
+                      _navKey(theme, const _Key('\\', value: '\\'), height: 30),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
 
-          // ── Centro: D-pad em cruz (corrigido largura para 108 para evitar overflow) ──
+          // ── Canto direito: D-pad em cruz ───────────────────────────────────
           SizedBox(
-            width: 108,
+            width: 112,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -235,33 +293,18 @@ class _AuxKeyboardState extends State<AuxKeyboard> {
                     const Spacer(),
                   ],
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 8),
                 // ← ↓ →
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     SizedBox(width: 32, child: _dpadKey(theme, '←', '←')),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: 8),
                     SizedBox(width: 32, child: _dpadKey(theme, '↓', '↓')),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: 8),
                     SizedBox(width: 32, child: _dpadKey(theme, '→', '→')),
                   ],
                 ),
-              ],
-            ),
-          ),
-
-          const SizedBox(width: 8),
-
-          // ── Lado direito: ⌫ e Enter ──────────────────────────────────
-          Expanded(
-            flex: 3,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _navKey(theme, _Key('⌫', value: 'BACKSPACE'), height: 45),
-                const SizedBox(height: 4),
-                _navKey(theme, _Key('Enter', value: 'ENTER', isAccent: true), height: 45),
               ],
             ),
           ),
