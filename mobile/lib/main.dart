@@ -6,6 +6,8 @@ import 'package:jalide/theme/jalide_theme.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:jalide/l10n/app_localizations.dart';
 
+late ValueNotifier<ThemeType> _themeNotifier;
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -13,10 +15,11 @@ void main() async {
   SshForegroundService.initialize();
 
   final initialTheme = await ThemeProvider.loadTheme();
-  
+  _themeNotifier = ValueNotifier(initialTheme);
+
   runApp(
     ThemeProvider(
-      notifier: ValueNotifier(initialTheme),
+      notifier: _themeNotifier,
       child: const JalideApp(),
     ),
   );

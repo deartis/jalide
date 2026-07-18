@@ -106,8 +106,9 @@ class EditorTabController extends ChangeNotifier {
     final controller = tab.controller;
     final focusNode = tab.focusNode;
 
-    tab.history.dispose();
-
+    // BUG6 FIX: NÃO chama tab.history.dispose() aqui — o controller ainda pode
+    // disparar listeners síncronos após removeAt(). Adiar para o microtask garante
+    // que o debounce timer não comita numa history já descartada.
     _openTabs.removeAt(index);
     if (_activeTabIndex == index) {
       _activeTabIndex = _openTabs.isNotEmpty ? (index > 0 ? index - 1 : 0) : -1;
@@ -119,6 +120,8 @@ class EditorTabController extends ChangeNotifier {
 
     Future.microtask(() {
       controller.dispose();
+      // Descarta o histórico DEPOIS do controller, quando todos os listeners já rodaram
+      tab.history.dispose();
       focusNode.dispose();
     });
 
@@ -255,11 +258,15 @@ class EditorTabController extends ChangeNotifier {
   static Mode? langForPath(String? path) {
     if (path == null) return javascript;
     switch (p.extension(path).toLowerCase()) {
+      case '.js':
+      case '.jsx':
+      case '.mjs': return javascript;
       case '.json': return json;
       case '.py':
       case '.pyw': return python;
       case '.html':
-      case '.htm': return xml;
+      case '.htm':
+      case '.xml': return xml;
       case '.css': return css;
       case '.dart': return dart;
       case '.cpp':
@@ -269,7 +276,9 @@ class EditorTabController extends ChangeNotifier {
       case '.h': return cpp;
       case '.md':
       case '.markdown': return markdown;
-      default: return javascript;
+      // M2 FIX: extensões desconhecidas retornam null (sem highlight forçado)
+      // evita highlight incorreto de JS para .ts, .yaml, .sh, .rb, etc.
+      default: return null;
     }
   }
 
@@ -346,6 +355,7 @@ class EditorTabController extends ChangeNotifier {
     for (final tab in _openTabs) {
       tab.controller.dispose();
       tab.focusNode.dispose();
+      tab.history.dispose();
     }
     _openTabs.clear();
     _activeTabIndex = -1;

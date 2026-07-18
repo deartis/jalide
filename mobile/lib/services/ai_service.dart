@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:convert';
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -8,7 +10,9 @@ import 'package:flutter/foundation.dart';
 class AIService {
   static const String _apiKeyStorageKey = 'gemma_api_key';
   static const String _modelStorageKey = 'gemini_model';
+  static const String _historyStorageKey = 'ai_chat_history_v1';
   static const String defaultModel = 'gemini-2.5-flash';
+  static const Duration _streamTimeout = Duration(seconds: 60);
 
   static const List<Map<String, String>> availableModels = [
     {'id': 'gemini-2.5-flash', 'label': 'Gemini 2.5 Flash (recomendado)'},
@@ -27,6 +31,9 @@ class AIService {
 
   /// Sessão de chat ativa — mantém o histórico de conversa.
   ChatSession? _chatSession;
+
+  /// Controla o cancelamento do stream ativo.
+  StreamController<String>? _cancelController;
 
   AIService();
 
@@ -167,7 +174,7 @@ class AIService {
 
     try {
       final testModel = GenerativeModel(
-        model: 'gemini-2.5-flash',
+        model: _selectedModel,
         apiKey: apiKey,
       );
       await testModel.generateContent([Content.text('hi')]);
@@ -227,6 +234,66 @@ class AIService {
     );
   }
 
+  /// Atualiza o contexto do projeto sem resetar o histórico de mensagens.
+  /// Usa quando o arquivo ativo muda com o chat já aberto.
+  Future<void> updateContext({
+    required String activeFileContent,
+    required String activeFilePath,
+    required String languageName,
+    List<String> projectFilePaths = const [],
+    List<String> openTabsPaths = const [],
+  }) async {
+    if (!_isInitialized || _chatSession == null) {
+      // Se não há sessão ativa, inicia uma nova com o contexto completo
+      return startChatWithContext(
+        activeFileContent: activeFileContent,
+        activeFilePath: activeFilePath,
+        languageName: languageName,
+        projectFilePaths: projectFilePaths,
+        openTabsPaths: openTabsPaths,
+      );
+    }
+
+    // Injeta uma mensagem de atualização de contexto sem resetar o histórico
+    final updatePrompt = _buildContextUpdatePrompt(
+      activeFileContent: activeFileContent,
+      activeFilePath: activeFilePath,
+      languageName: languageName,
+    );
+
+    try {
+      // Envia silenciosamente como atualização de contexto
+      await _chatSession!.sendMessage(Content.text(updatePrompt));
+    } catch (_) {
+      // Se falhar, não é crítico — o chat continua funcionando
+    }
+  }
+
+  /// Monta um prompt curto de atualização de contexto (arquivo mudou).
+  String _buildContextUpdatePrompt({
+    required String activeFileContent,
+    required String activeFilePath,
+    required String languageName,
+  }) {
+    final maxFileChars = 4000;
+    final truncated = activeFileContent.length > maxFileChars;
+    final fileSnippet = truncated
+        ? '${activeFileContent.substring(0, maxFileChars)}\n... (truncado)'
+        : activeFileContent;
+
+    return '''[ATUALIZAÇÃO DE CONTEXTO]
+O usuário mudou para outro arquivo. Contexto atualizado:
+
+Arquivo: $activeFilePath
+Linguagem: $languageName
+
+```$languageName
+$fileSnippet
+```
+
+Responda apenas com "OK, contexto atualizado." e nada mais.''';
+  }
+
   /// Monta o system prompt com o contexto do projeto.
   String _buildSystemPrompt({
     required String activeFileContent,
@@ -277,8 +344,15 @@ $openTabs
 - Se o usuário perguntar algo que não está relacionado a programação, redirecione educadamente''';
   }
 
+  /// Cancela o stream de resposta em andamento.
+  void cancelCurrentStream() {
+    _cancelController?.add('__CANCEL__');
+    _cancelController = null;
+  }
+
   /// Envia uma mensagem para o chat e retorna um Stream de partes de texto
   /// (streaming de resposta — texto aparece progressivamente).
+  /// Tem timeout de [_streamTimeout] e suporta cancelamento via [cancelCurrentStream].
   Stream<String> sendMessage(String message) async* {
     if (!_isInitialized) {
       try {
@@ -289,27 +363,87 @@ $openTabs
       }
     }
 
-    // Garante que há uma sessão ativa (caso startChatWithContext não tenha sido chamado)
+    // Garante que há uma sessão ativa
     _chatSession ??= _chatModel.startChat();
+
+    // Prepara o controlador de cancelamento
+    _cancelController?.close();
+    final cancelCtrl = StreamController<String>.broadcast();
+    _cancelController = cancelCtrl;
+    bool cancelled = false;
+    cancelCtrl.stream.listen((event) {
+      if (event == '__CANCEL__') cancelled = true;
+    });
 
     try {
       final responseStream = _chatSession!.sendMessageStream(
         Content.text(message),
+      ).timeout(
+        _streamTimeout,
+        onTimeout: (sink) => sink.close(),
       );
+
       await for (final chunk in responseStream) {
+        if (cancelled) break;
         final text = chunk.text;
         if (text != null && text.isNotEmpty) {
           yield text;
         }
       }
+      if (cancelled) yield '\n\n*[Resposta cancelada]*';
     } catch (e) {
-      yield '\n\n**Erro ao comunicar com a IA:** $e';
+      if (!cancelled) yield '\n\n**Erro ao comunicar com a IA:** $e';
+    } finally {
+      if (_cancelController == cancelCtrl) _cancelController = null;
+      cancelCtrl.close();
     }
   }
 
   /// Reinicia o chat — descarta o histórico e a sessão atual.
   void resetChat() {
+    cancelCurrentStream();
     _chatSession = null;
+  }
+
+  // ─── Persistência do histórico (SharedPreferences) ──────────────────────────────────
+
+  /// Salva a lista de mensagens em SharedPreferences (JSON).
+  /// Apenas mensagens já finalizadas (isStreaming=false) são salvas.
+  Future<void> persistHistory(List<Map<String, dynamic>> messages) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      // Filtra mensagens ainda em streaming
+      final finished = messages.where((m) => m['isStreaming'] != true).toList();
+      // Limita a 60 mensagens para não explodir o storage
+      final capped = finished.length > 60 ? finished.sublist(finished.length - 60) : finished;
+      await prefs.setString(_historyStorageKey, jsonEncode(capped));
+    } catch (e) {
+      debugPrint('Erro ao salvar histórico do chat: $e');
+    }
+  }
+
+  /// Restaura a lista de mensagens do SharedPreferences.
+  Future<List<Map<String, dynamic>>> loadPersistedHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_historyStorageKey);
+      if (raw == null) return [];
+      final decoded = jsonDecode(raw) as List<dynamic>;
+      return decoded.cast<Map<String, dynamic>>();
+    } catch (e) {
+      debugPrint('Erro ao carregar histórico do chat: $e');
+      return [];
+    }
+  }
+
+  /// Apaga o histórico persistido.
+  Future<void> clearPersistedHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_historyStorageKey);
+    } catch (e) {
+      debugPrint('Erro ao limpar histórico persistido: $e');
+    }
   }
 
   // ─── Completion inline (ghost suggestions) ──────────────────────────────

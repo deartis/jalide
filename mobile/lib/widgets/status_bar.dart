@@ -28,21 +28,31 @@ class StatusBar extends StatelessWidget {
     final theme = ThemeProvider.of(context).current;
     return Container(
       color: theme.accent,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
       child: Row(
         children: [
-          GestureDetector(
-            onTap: onTerminalToggle,
-            child: _sbChip(theme, '⬡ Terminal'),
+          ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 40),
+            child: GestureDetector(
+              onTap: onTerminalToggle,
+              behavior: HitTestBehavior.opaque,
+              child: _sbChip(theme, '⬡ Terminal'),
+            ),
           ),
           const SizedBox(width: 12),
-          GestureDetector(
-            onTap: onLanguageTap,
-            behavior: HitTestBehavior.opaque,
-            child: _sbChip(theme, languageName),
+          ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 40),
+            child: GestureDetector(
+              onTap: onLanguageTap,
+              behavior: HitTestBehavior.opaque,
+              child: _sbChip(theme, languageName),
+            ),
           ),
           const SizedBox(width: 12),
-          _sbChip(theme, 'UTF-8'),
+          ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 40),
+            child: _sbChip(theme, 'UTF-8'),
+          ),
           const Spacer(),
           // Indicador SSH discreto — só aparece quando há sessão ativa
           if (sshConnectionManager != null)
@@ -99,7 +109,9 @@ class _SshStatusChip extends StatelessWidget {
         return GestureDetector(
           onTap: onTap,
           behavior: HitTestBehavior.opaque,
-          child: Row(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 40),
+            child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               // Bolinha de status pulsante quando conectando
@@ -118,6 +130,7 @@ class _SshStatusChip extends StatelessWidget {
                 ),
               ),
             ],
+          ),
           ),
         );
       },

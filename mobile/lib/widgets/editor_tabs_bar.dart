@@ -22,7 +22,7 @@ class EditorTabsBar extends StatelessWidget {
     return Container(
       height: 32,
       decoration: BoxDecoration(
-        color: Color(0xFF0F0F12),
+        color: theme.surface,
         border: Border(bottom: BorderSide(color: theme.border)),
       ),
       child: ListView.builder(
@@ -72,7 +72,7 @@ class EditorTabsBar extends StatelessWidget {
                   GestureDetector(
                     onTap: () => onCloseTab(i),
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
                       child: Icon(
                         Icons.close,
                         size: 14,

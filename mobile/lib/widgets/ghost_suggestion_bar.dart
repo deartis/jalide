@@ -95,19 +95,26 @@ class _GhostSuggestionBarState extends State<GhostSuggestionBar>
     if (contextBefore == _lastPromptSnapshot) return;
     _lastPromptSnapshot = contextBefore;
 
-    // Pega só as últimas ~200 chars para o prompt (economia de tokens)
-    final snippet = contextBefore.length > 200
-        ? '...${contextBefore.substring(contextBefore.length - 200)}'
+    // Pega só as últimas ~600 chars para o prompt (mais contexto = melhor sugestão)
+    final snippet = contextBefore.length > 600
+        ? '...${contextBefore.substring(contextBefore.length - 600)}'
         : contextBefore;
+
+    // Pega até 200 chars depois do cursor para contexto bidirecional
+    final contextAfter = cursorOffset < text.length
+        ? text.substring(cursorOffset, (cursorOffset + 200).clamp(0, text.length))
+        : '';
 
     setState(() => _isLoading = true);
 
     try {
       final prompt = '''Você é um autocomplete de código. Complete o código abaixo com UMA linha apenas, sem explicações, sem markdown, sem blocos de código.
 Linguagem: ${widget.languageName}
-Código atual:
+
+Código antes do cursor:
 $snippet
-Responda APENAS com o texto que deve ser inserido após o cursor. Se não souber, responda com uma string vazia.''';
+${contextAfter.isNotEmpty ? '\nCódigo após o cursor (não repita isto):\n$contextAfter' : ''}
+Responda APENAS com o texto que deve ser inserido no cursor. Se não souber, responda com uma string vazia.''';
 
       final result = await _ai.generateCompletion(prompt);
 
@@ -295,8 +302,9 @@ class _SuggestionButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 3, vertical: 6),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+        margin: const EdgeInsets.symmetric(horizontal: 3, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        constraints: const BoxConstraints(minHeight: 36),
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.15),
           border: Border.all(color: color.withValues(alpha: 0.4)),

@@ -1008,7 +1008,7 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
                       onTap: () {
                         final pathToNavigate = i == 0 && !Platform.isWindows
                             ? '/'
-                            : segments.sublist(0, i + 1).join('/');
+                            : segments.sublist(0, i + 1).join(Platform.pathSeparator);
                         _navigateTo(pathToNavigate);
                       },
                       child: Container(

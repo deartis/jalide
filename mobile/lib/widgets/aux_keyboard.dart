@@ -1,13 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../theme/jalide_theme.dart';
 
-/// Definição de uma camada de teclas
-class _KeyLayer {
-  final String label;
-  final IconData icon;
-  final List<_Key> keys;
-  const _KeyLayer({required this.label, required this.icon, required this.keys});
-}
+// ─── Modelos ─────────────────────────────────────────────────────────────────
 
 class _Key {
   final String label;
@@ -17,9 +12,11 @@ class _Key {
       : value = value ?? label;
 }
 
+// ─── Widget principal ─────────────────────────────────────────────────────────
+
 /// Teclado auxiliar em camadas estilo Termux.
 /// Três abas fixas no topo: Nav | Sym | Ctrl
-/// Cada aba exibe uma grade de 2 linhas de teclas sem scroll.
+/// A aba Nav tem D-pad de setas no formato de cruz (como teclado físico).
 class AuxKeyboard extends StatefulWidget {
   final List<String> auxKeys; // mantido por compatibilidade, não usado
   final bool ctrlActive;
@@ -41,76 +38,50 @@ class AuxKeyboard extends StatefulWidget {
 class _AuxKeyboardState extends State<AuxKeyboard> {
   int _layer = 0;
 
-  static final List<_KeyLayer> _layers = [
-    _KeyLayer(
-      label: 'Nav',
-      icon: Icons.keyboard_arrow_up_rounded,
-      keys: [
-        _Key('Tab', isAccent: true),
-        _Key('↑'),
-        _Key('↓'),
-        _Key('←'),
-        _Key('→'),
-        _Key('⌫', value: 'BACKSPACE'),
-        _Key('Esc', value: 'ESC', isAccent: true),
-        _Key('Home', value: 'HOME'),
-        _Key('End', value: 'END'),
-        _Key('Sel↑', value: 'SEL_UP'),
-        _Key('Sel↓', value: 'SEL_DOWN'),
-        _Key('Enter', value: 'ENTER', isAccent: true),
-      ],
-    ),
-    _KeyLayer(
-      label: 'Sym',
-      icon: Icons.data_object,
-      keys: [
-        _Key('{ }', value: '{ }'),
-        _Key('[ ]', value: '[ ]'),
-        _Key('( )', value: '( )'),
-        _Key('" "', value: '" "'),
-        _Key("' '", value: "' '"),
-        _Key('` `', value: '` `'),
-        _Key(';'),
-        _Key(':'),
-        _Key('='),
-        _Key('=>'),
-        _Key('->'),
-        _Key('**'),
-        _Key('//'),
-        _Key('/*'),
-        _Key('!='),
-        _Key('=='),
-        _Key('&&'),
-        _Key('||'),
-        _Key('!'),
-        _Key('?'),
-        _Key('@'),
-        _Key('#'),
-        _Key('\$'),
-        _Key('%'),
-      ],
-    ),
-    _KeyLayer(
-      label: 'Ctrl',
-      icon: Icons.keyboard_command_key,
-      keys: [
-        _Key('Ctrl+Z', value: 'Z (Undo)', isAccent: true),
-        _Key('Ctrl+Y', value: 'Y (Redo)', isAccent: true),
-        _Key('Ctrl+A', value: 'A (All)'),
-        _Key('Ctrl+C', value: 'C (Copy)'),
-        _Key('Ctrl+V', value: 'V (Paste)'),
-        _Key('Ctrl+X', value: 'X (Cut)'),
-        _Key('Ctrl+S', value: 'S (Save)'),
-        _Key('Ctrl+D', value: 'D (Dup)'),
-        _Key('Ctrl+F', value: 'F (Format)', isAccent: true),
-      ],
-    ),
+  // ── Camada Sym (símbolos) ─────────────────────────────────────────────────
+  static const _symKeys = [
+    _Key('{ }', value: '{ }'),
+    _Key('[ ]', value: '[ ]'),
+    _Key('( )', value: '( )'),
+    _Key('" "', value: '" "'),
+    _Key("' '", value: "' '"),
+    _Key('` `', value: '` `'),
+    _Key(';'),
+    _Key(':'),
+    _Key('='),
+    _Key('=>'),
+    _Key('->'),
+    _Key('**'),
+    _Key('//'),
+    _Key('/*'),
+    _Key('!='),
+    _Key('=='),
+    _Key('&&'),
+    _Key('||'),
+    _Key('!'),
+    _Key('?'),
+    _Key('@'),
+    _Key('#'),
+    _Key(r'$'),
+    _Key('%'),
+  ];
+
+  // ── Camada Ctrl ───────────────────────────────────────────────────────────
+  static const _ctrlKeys = [
+    _Key('Ctrl+Z', value: 'Z (Undo)', isAccent: true),
+    _Key('Ctrl+Y', value: 'Y (Redo)', isAccent: true),
+    _Key('Ctrl+A', value: 'A (All)'),
+    _Key('Ctrl+C', value: 'C (Copy)'),
+    _Key('Ctrl+V', value: 'V (Paste)'),
+    _Key('Ctrl+X', value: 'X (Cut)'),
+    _Key('Ctrl+S', value: 'S (Save)'),
+    _Key('Ctrl+D', value: 'D (Dup)'),
+    _Key('Ctrl+F', value: 'F (Format)', isAccent: true),
   ];
 
   @override
   Widget build(BuildContext context) {
     final theme = ThemeProvider.of(context).current;
-    final currentLayer = _layers[_layer];
 
     return Container(
       decoration: BoxDecoration(
@@ -120,16 +91,25 @@ class _AuxKeyboardState extends State<AuxKeyboard> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // ── Barra de abas ──────────────────────────────────────────────
           _buildTabBar(theme),
-          // ── Grade de teclas ────────────────────────────────────────────
-          _buildKeyGrid(theme, currentLayer.keys),
+          // Cada aba tem seu próprio builder
+          if (_layer == 0) _buildNavLayer(theme),
+          if (_layer == 1) _buildSymLayer(theme),
+          if (_layer == 2) _buildCtrlLayer(theme),
         ],
       ),
     );
   }
 
+  // ── Barra de abas ─────────────────────────────────────────────────────────
+
   Widget _buildTabBar(JalideThemeVariant theme) {
+    final tabs = [
+      (Icons.keyboard_arrow_up_rounded, 'Nav'),
+      (Icons.data_object, 'Sym'),
+      (Icons.keyboard_command_key, 'Ctrl'),
+    ];
+
     return Container(
       height: 28,
       decoration: BoxDecoration(
@@ -138,9 +118,9 @@ class _AuxKeyboardState extends State<AuxKeyboard> {
       ),
       child: Row(
         children: [
-          ...List.generate(_layers.length, (i) {
+          ...List.generate(tabs.length, (i) {
             final isActive = i == _layer;
-            final layer = _layers[i];
+            final (icon, label) = tabs[i];
             return Expanded(
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
@@ -148,9 +128,7 @@ class _AuxKeyboardState extends State<AuxKeyboard> {
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 150),
                   decoration: BoxDecoration(
-                    color: isActive
-                        ? theme.surface
-                        : Colors.transparent,
+                    color: isActive ? theme.surface : Colors.transparent,
                     border: Border(
                       bottom: BorderSide(
                         color: isActive ? theme.accent : Colors.transparent,
@@ -162,14 +140,11 @@ class _AuxKeyboardState extends State<AuxKeyboard> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(
-                        layer.icon,
-                        size: 12,
-                        color: isActive ? theme.accent : theme.textMuted,
-                      ),
+                      Icon(icon, size: 12,
+                          color: isActive ? theme.accent : theme.textMuted),
                       const SizedBox(width: 4),
                       Text(
-                        layer.label,
+                        label,
                         style: TextStyle(
                           fontSize: 11,
                           fontFamily: 'monospace',
@@ -184,7 +159,7 @@ class _AuxKeyboardState extends State<AuxKeyboard> {
               ),
             );
           }),
-          // Badge de modo: indica se o teclado está controlando o editor ou o terminal
+          // Badge EDIT / TERM
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8),
             decoration: BoxDecoration(
@@ -220,11 +195,162 @@ class _AuxKeyboardState extends State<AuxKeyboard> {
     );
   }
 
-  Widget _buildKeyGrid(JalideThemeVariant theme, List<_Key> keys) {
-    // Divide as teclas em 2 linhas igualitárias
-    final half = (keys.length / 2).ceil();
-    final row1 = keys.sublist(0, half);
-    final row2 = keys.sublist(half);
+  // ── Aba Nav: D-pad em cruz + teclas extras ────────────────────────────────
+
+  Widget _buildNavLayer(JalideThemeVariant theme) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // ── Lado esquerdo: Tab, Esc (Home, End e Sel removidos) ──────────
+          Expanded(
+            flex: 3,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _navKey(theme, _Key('Tab', value: 'Tab', isAccent: true), height: 45),
+                const SizedBox(height: 4),
+                _navKey(theme, _Key('Esc', value: 'ESC', isAccent: true), height: 45),
+              ],
+            ),
+          ),
+
+          const SizedBox(width: 8),
+
+          // ── Centro: D-pad em cruz (corrigido largura para 108 para evitar overflow) ──
+          SizedBox(
+            width: 108,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // ↑ sozinho no centro
+                Row(
+                  children: [
+                    const Spacer(),
+                    SizedBox(
+                      width: 32,
+                      child: _dpadKey(theme, '↑', '↑'),
+                    ),
+                    const Spacer(),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                // ← ↓ →
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(width: 32, child: _dpadKey(theme, '←', '←')),
+                    const SizedBox(width: 4),
+                    SizedBox(width: 32, child: _dpadKey(theme, '↓', '↓')),
+                    const SizedBox(width: 4),
+                    SizedBox(width: 32, child: _dpadKey(theme, '→', '→')),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(width: 8),
+
+          // ── Lado direito: ⌫ e Enter ──────────────────────────────────
+          Expanded(
+            flex: 3,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _navKey(theme, _Key('⌫', value: 'BACKSPACE'), height: 45),
+                const SizedBox(height: 4),
+                _navKey(theme, _Key('Enter', value: 'ENTER', isAccent: true), height: 45),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Tecla padrão da barra Nav
+  Widget _navKey(JalideThemeVariant theme, _Key key, {double height = 30}) {
+    final accent = theme.accent;
+    final bgColor = key.isAccent
+        ? accent.withValues(alpha: 0.18)
+        : theme.bg.withValues(alpha: 0.8);
+    final borderColor =
+        key.isAccent ? accent : theme.border.withValues(alpha: 0.7);
+    final textColor = key.isAccent ? accent : theme.textMuted;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        HapticFeedback.lightImpact();
+        widget.onKeyTap(key.value);
+      },
+      child: Container(
+        height: height,
+        margin: const EdgeInsets.symmetric(horizontal: 2),
+        decoration: BoxDecoration(
+          color: bgColor,
+          border: Border.all(color: borderColor, width: 0.6),
+          borderRadius: BorderRadius.circular(5),
+        ),
+        child: Center(
+          child: Text(
+            key.label,
+            style: TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 10.5,
+              fontWeight: key.isAccent ? FontWeight.bold : FontWeight.normal,
+              color: textColor,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Tecla de D-pad: quadrada e destacada com seta
+  Widget _dpadKey(JalideThemeVariant theme, String label, String value) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        HapticFeedback.lightImpact();
+        widget.onKeyTap(value);
+      },
+      onLongPress: () {
+        // Long press nas setas dispara repetidamente
+        HapticFeedback.lightImpact();
+        widget.onKeyTap(value);
+      },
+      child: Container(
+        height: 30,
+        decoration: BoxDecoration(
+          color: theme.accent.withValues(alpha: 0.12),
+          border: Border.all(color: theme.accent.withValues(alpha: 0.5), width: 0.8),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Center(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 14,
+              color: theme.accent,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Aba Sym ───────────────────────────────────────────────────────────────
+
+  Widget _buildSymLayer(JalideThemeVariant theme) {
+    final half = (_symKeys.length / 2).ceil();
+    final row1 = _symKeys.sublist(0, half);
+    final row2 = _symKeys.sublist(half);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
@@ -239,31 +365,51 @@ class _AuxKeyboardState extends State<AuxKeyboard> {
     );
   }
 
-  Widget _buildKeyRow(JalideThemeVariant theme, List<_Key> keys) {
+  // ── Aba Ctrl ──────────────────────────────────────────────────────────────
+
+  Widget _buildCtrlLayer(JalideThemeVariant theme) {
+    final half = (_ctrlKeys.length / 2).ceil();
+    final row1 = _ctrlKeys.sublist(0, half);
+    final row2 = _ctrlKeys.sublist(half);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildKeyRow(theme, row1, isCtrlLayer: true),
+          const SizedBox(height: 3),
+          _buildKeyRow(theme, row2, isCtrlLayer: true),
+        ],
+      ),
+    );
+  }
+
+  // ── Grid de teclas genéricas ──────────────────────────────────────────────
+
+  Widget _buildKeyRow(JalideThemeVariant theme, List<_Key> keys,
+      {bool isCtrlLayer = false}) {
     return SizedBox(
       height: 30,
       child: Row(
         children: keys.map((key) {
-          final isCtrlLayer = _layer == 2;
           final accent = isCtrlLayer
-              ? const Color(0xFFFF79C6) // rosa para Ctrl
+              ? const Color(0xFFFF79C6)
               : theme.accent;
 
-          final isHighlight = key.isAccent;
-          final bgColor = isHighlight
+          final bgColor = key.isAccent
               ? accent.withValues(alpha: 0.18)
               : theme.bg.withValues(alpha: 0.8);
           final borderColor =
-              isHighlight ? accent : theme.border.withValues(alpha: 0.7);
-          final textColor = isHighlight ? accent : theme.textMuted;
+              key.isAccent ? accent : theme.border.withValues(alpha: 0.7);
+          final textColor = key.isAccent ? accent : theme.textMuted;
 
           return Expanded(
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: () {
-                // Para camada Ctrl, envia como sequência Ctrl+X
+                HapticFeedback.lightImpact();
                 if (isCtrlLayer) {
-                  // Simula: ativa ctrl e envia a tecla
                   widget.onKeyTap('Ctrl');
                   widget.onKeyTap(key.value);
                 } else {
@@ -283,8 +429,9 @@ class _AuxKeyboardState extends State<AuxKeyboard> {
                     style: TextStyle(
                       fontFamily: 'monospace',
                       fontSize: 10.5,
-                      fontWeight:
-                          isHighlight ? FontWeight.bold : FontWeight.normal,
+                      fontWeight: key.isAccent
+                          ? FontWeight.bold
+                          : FontWeight.normal,
                       color: textColor,
                     ),
                     maxLines: 1,

@@ -17,6 +17,11 @@ import '../utils/file_utils.dart';
 
 enum TerminalMode { local, ssh }
 
+/// Interface pública para enviar input ao terminal sem depender do State concreto.
+abstract class TerminalInputHandler {
+  void sendInput(String data);
+}
+
 // ─── Widget Principal ────────────────────────────────────────────────────────
 
 class TerminalPanel extends StatefulWidget {
@@ -25,7 +30,7 @@ class TerminalPanel extends StatefulWidget {
 
   /// Sessão SSH ativa — obrigatório quando mode == TerminalMode.ssh
   final SshSession? sshSession;
-  final void Function(TerminalPanelState?)? onTerminalStateChanged;
+  final void Function(TerminalInputHandler?)? onTerminalStateChanged;
 
   const TerminalPanel({
     super.key,
@@ -42,7 +47,7 @@ class TerminalPanel extends StatefulWidget {
   State<TerminalPanel> createState() => TerminalPanelState();
 }
 
-class TerminalPanelState extends State<TerminalPanel> {
+class TerminalPanelState extends State<TerminalPanel> implements TerminalInputHandler {
   late final Terminal _terminal;
   late final TerminalController _controller;
 
@@ -53,6 +58,7 @@ class TerminalPanelState extends State<TerminalPanel> {
   bool _ready = false;
   String? _errorMessage;
 
+  @override
   void sendInput(String data) {
     if (!_ready) return;
     try {
@@ -203,7 +209,7 @@ class TerminalPanelState extends State<TerminalPanel> {
         remotePath = FileUtils.resolveSafPath(remotePath);
       }
       Future.delayed(const Duration(milliseconds: 600), () {
-        session.writeToShell('cd "$remotePath"\n');
+        if (mounted) session.writeToShell('cd "$remotePath"\n');
       });
     }
   }

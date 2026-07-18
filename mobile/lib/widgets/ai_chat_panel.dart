@@ -8,19 +8,91 @@ import 'ai_settings_dialog.dart';
 
 // ─── Modelos de mensagem ─────────────────────────────────────────────────────
 
-enum _MsgRole { user, ai, system }
+enum ChatMsgRole { user, ai, system }
 
-class _ChatMessage {
-  final _MsgRole role;
+class ChatMessage {
+  final ChatMsgRole role;
   String text;
   bool isStreaming;
 
-  _ChatMessage({
+  ChatMessage({
     required this.role,
     required this.text,
     this.isStreaming = false,
   });
+
+  /// Serializa para JSON (para persistência em disco)
+  Map<String, dynamic> toJson() => {
+    'role': role.name,
+    'text': text,
+    'isStreaming': isStreaming,
+  };
+
+  /// Desserializa do JSON
+  factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
+    role: ChatMsgRole.values.firstWhere(
+      (r) => r.name == json['role'],
+      orElse: () => ChatMsgRole.system,
+    ),
+    text: json['text'] as String? ?? '',
+    isStreaming: json['isStreaming'] as bool? ?? false,
+  );
 }
+
+// ─── Comandos rápidos ────────────────────────────────────────────────────────
+
+class _QuickCommand {
+  final String trigger;   // ex: '/explain'
+  final String label;     // ex: 'Explicar código'
+  final String icon;
+  final String Function(String fileName) buildPrompt;
+
+  const _QuickCommand({
+    required this.trigger,
+    required this.label,
+    required this.icon,
+    required this.buildPrompt,
+  });
+}
+
+const _quickCommands = [
+  _QuickCommand(
+    trigger: '/explain',
+    label: 'Explicar código',
+    icon: '🔍',
+    buildPrompt: _promptExplain,
+  ),
+  _QuickCommand(
+    trigger: '/refactor',
+    label: 'Sugerir refatoração',
+    icon: '♻️',
+    buildPrompt: _promptRefactor,
+  ),
+  _QuickCommand(
+    trigger: '/test',
+    label: 'Gerar testes',
+    icon: '🧪',
+    buildPrompt: _promptTest,
+  ),
+  _QuickCommand(
+    trigger: '/fix',
+    label: 'Encontrar e corrigir bugs',
+    icon: '🐛',
+    buildPrompt: _promptFix,
+  ),
+  _QuickCommand(
+    trigger: '/doc',
+    label: 'Gerar documentação',
+    icon: '📝',
+    buildPrompt: _promptDoc,
+  ),
+];
+
+String _promptExplain(String f) => 'Explique o que o arquivo $f faz, em detalhes. Descreva as principais funções, classes e o fluxo de execução.';
+String _promptRefactor(String f) => 'Analise o arquivo $f e sugira melhorias de refatoração: organização, nomes, separação de responsabilidades e padrões de projeto aplicáveis.';
+String _promptTest(String f) => 'Gere testes unitários para as principais funções e classes do arquivo $f. Use as convenções de teste da linguagem atual.';
+String _promptFix(String f) => 'Analise o arquivo $f em busca de bugs, problemas de performance, vazamentos de memória e más práticas. Liste os problemas e sugira as correções.';
+String _promptDoc(String f) => 'Gere documentação completa para o arquivo $f: docstrings/comentários para todas as classes, métodos e parâmetros públicos.';
 
 // ─── Painel principal ────────────────────────────────────────────────────────
 
@@ -32,10 +104,26 @@ class AIChatPanel extends StatefulWidget {
   /// Texto descritivo do contexto carregado, exibido na mensagem inicial.
   final String contextSummary;
 
+  /// Nome do arquivo ativo (para os prompts rápidos).
+  final String activeFileName;
+
+  /// Histórico de mensagens anterior (para restaurar a conversa ao reabrir).
+  final List<ChatMessage> initialMessages;
+
+  /// Chamado sempre que o histórico muda, para que o pai possa persistir.
+  final void Function(List<ChatMessage>)? onMessagesChanged;
+
+  /// Callback para inserir texto no cursor do editor ativo.
+  final void Function(String text)? onInsertAtCursor;
+
   const AIChatPanel({
     super.key,
     required this.aiService,
     required this.contextSummary,
+    this.activeFileName = '',
+    this.initialMessages = const [],
+    this.onMessagesChanged,
+    this.onInsertAtCursor,
   });
 
   @override
@@ -45,29 +133,73 @@ class AIChatPanel extends StatefulWidget {
 class _AIChatPanelState extends State<AIChatPanel> {
   final _inputController = TextEditingController();
   final _scrollController = ScrollController();
-  final List<_ChatMessage> _messages = [];
+  late final List<ChatMessage> _messages;
   bool _isSending = false;
   StreamSubscription<String>? _streamSub;
+  Timer? _streamThrottleTimer;
+  bool _streamDirty = false;
+
+  // Comandos rápidos
+  bool _showQuickCommands = false;
 
   @override
   void initState() {
     super.initState();
-    // Mensagem de sistema indicando que o contexto foi carregado
-    _messages.add(_ChatMessage(
-      role: _MsgRole.system,
-      text: widget.contextSummary,
-    ));
+    if (widget.initialMessages.isNotEmpty) {
+      _messages = List<ChatMessage>.from(widget.initialMessages);
+    } else {
+      _messages = [
+        ChatMessage(
+          role: ChatMsgRole.system,
+          text: widget.contextSummary,
+        ),
+      ];
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+
+    // Escuta o campo de texto para detectar '/'
+    _inputController.addListener(_onInputChanged);
   }
 
   @override
   void dispose() {
     _streamSub?.cancel();
+    _streamThrottleTimer?.cancel();
+    _inputController.removeListener(_onInputChanged);
     _inputController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
 
-  // ─── Envio de mensagens ──────────────────────────────────────────────────
+  // ─── Input listener para comandos rápidos ───────────────────────────────
+
+  void _onInputChanged() {
+    final text = _inputController.text;
+    final shouldShow = text == '/' || (text.startsWith('/') && !text.contains(' ') && text.length <= 10);
+    if (shouldShow != _showQuickCommands) {
+      setState(() => _showQuickCommands = shouldShow);
+    }
+  }
+
+  void _applyQuickCommand(_QuickCommand cmd) {
+    final fileName = widget.activeFileName.isNotEmpty ? widget.activeFileName : 'arquivo atual';
+    final prompt = cmd.buildPrompt(fileName);
+    _inputController.text = prompt;
+    _inputController.selection = TextSelection.collapsed(offset: prompt.length);
+    setState(() => _showQuickCommands = false);
+  }
+
+  // ─── Envio / cancelamento ────────────────────────────────────────────────
+
+  void _notifyChanged() {
+    widget.onMessagesChanged?.call(List.unmodifiable(_messages));
+    // Persiste em disco em background
+    final serialized = _messages
+        .where((m) => !m.isStreaming)
+        .map((m) => m.toJson())
+        .toList();
+    widget.aiService.persistHistory(serialized);
+  }
 
   Future<void> _sendMessage() async {
     final text = _inputController.text.trim();
@@ -75,17 +207,14 @@ class _AIChatPanelState extends State<AIChatPanel> {
 
     _inputController.clear();
     setState(() {
-      _messages.add(_ChatMessage(role: _MsgRole.user, text: text));
+      _showQuickCommands = false;
+      _messages.add(ChatMessage(role: ChatMsgRole.user, text: text));
       _isSending = true;
     });
+    _notifyChanged();
     _scrollToBottom();
 
-    // Cria a bolha de resposta da IA (streaming — começa vazia)
-    final aiMsg = _ChatMessage(
-      role: _MsgRole.ai,
-      text: '',
-      isStreaming: true,
-    );
+    final aiMsg = ChatMessage(role: ChatMsgRole.ai, text: '', isStreaming: true);
     setState(() => _messages.add(aiMsg));
 
     try {
@@ -93,8 +222,18 @@ class _AIChatPanelState extends State<AIChatPanel> {
       _streamSub = stream.listen(
         (chunk) {
           if (!mounted) return;
-          setState(() => aiMsg.text += chunk);
+          aiMsg.text += chunk;
           _scrollToBottom();
+          // Throttle: setState no máximo a cada 50ms para evitar lag no streaming
+          _streamDirty = true;
+          if (_streamThrottleTimer == null || !_streamThrottleTimer!.isActive) {
+            _streamThrottleTimer = Timer(const Duration(milliseconds: 50), () {
+              if (mounted && _streamDirty) {
+                _streamDirty = false;
+                setState(() {});
+              }
+            });
+          }
         },
         onDone: () {
           if (!mounted) return;
@@ -102,6 +241,7 @@ class _AIChatPanelState extends State<AIChatPanel> {
             aiMsg.isStreaming = false;
             _isSending = false;
           });
+          _notifyChanged();
         },
         onError: (e) {
           if (!mounted) return;
@@ -110,6 +250,7 @@ class _AIChatPanelState extends State<AIChatPanel> {
             aiMsg.isStreaming = false;
             _isSending = false;
           });
+          _notifyChanged();
         },
       );
     } catch (e) {
@@ -119,20 +260,38 @@ class _AIChatPanelState extends State<AIChatPanel> {
         aiMsg.isStreaming = false;
         _isSending = false;
       });
+      _notifyChanged();
     }
+  }
+
+  void _cancelStream() {
+    _streamSub?.cancel();
+    widget.aiService.cancelCurrentStream();
+    setState(() => _isSending = false);
+    // Marca a última mensagem da IA como não-streaming
+    final last = _messages.lastOrNull;
+    if (last != null && last.role == ChatMsgRole.ai && last.isStreaming) {
+      setState(() {
+        last.isStreaming = false;
+        if (last.text.isEmpty) last.text = '*[Cancelado]*';
+      });
+    }
+    _notifyChanged();
   }
 
   void _resetChat() {
     _streamSub?.cancel();
     widget.aiService.resetChat();
+    widget.aiService.clearPersistedHistory();
     setState(() {
       _messages.clear();
-      _messages.add(_ChatMessage(
-        role: _MsgRole.system,
+      _messages.add(ChatMessage(
+        role: ChatMsgRole.system,
         text: widget.contextSummary,
       ));
       _isSending = false;
     });
+    _notifyChanged();
   }
 
   void _scrollToBottom() {
@@ -146,6 +305,9 @@ class _AIChatPanelState extends State<AIChatPanel> {
       }
     });
   }
+
+  // ─── Contador de mensagens (exclui a mensagem de sistema) ───────────────
+  int get _messageCount => _messages.where((m) => m.role != ChatMsgRole.system).length;
 
   // ─── Build ───────────────────────────────────────────────────────────────
 
@@ -175,6 +337,7 @@ class _AIChatPanelState extends State<AIChatPanel> {
               _buildHeader(theme),
               const Divider(height: 1, thickness: 0.5),
               Expanded(child: _buildMessageList(theme)),
+              if (_showQuickCommands) _buildQuickCommandsMenu(theme),
               _buildInputBar(theme),
             ],
           ),
@@ -213,14 +376,24 @@ class _AIChatPanelState extends State<AIChatPanel> {
             child: Icon(Icons.auto_awesome, size: 16, color: theme.accent),
           ),
           const SizedBox(width: 10),
-          Text(
-            'Assistente JAL',
-            style: TextStyle(
-              color: theme.textPri,
-              fontSize: 15,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 0.3,
-            ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Assistente JAL',
+                style: TextStyle(
+                  color: theme.textPri,
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.3,
+                ),
+              ),
+              if (_messageCount > 0)
+                Text(
+                  '$_messageCount msg${_messageCount == 1 ? '' : 's'} na sessão',
+                  style: TextStyle(color: theme.textMuted, fontSize: 10),
+                ),
+            ],
           ),
           const Spacer(),
           // Botão reiniciar conversa
@@ -274,20 +447,81 @@ class _AIChatPanelState extends State<AIChatPanel> {
     );
   }
 
-  Widget _buildBubble(_ChatMessage msg, JalideThemeVariant theme) {
+  Widget _buildBubble(ChatMessage msg, JalideThemeVariant theme) {
     switch (msg.role) {
-      case _MsgRole.system:
+      case ChatMsgRole.system:
         return _SystemBubble(text: msg.text, theme: theme);
-      case _MsgRole.user:
+      case ChatMsgRole.user:
         return _UserBubble(text: msg.text, theme: theme);
-      case _MsgRole.ai:
+      case ChatMsgRole.ai:
         return _AIBubble(
           msg: msg,
           theme: theme,
-          onInsert: null, // Futuramente: inserir no cursor
+          onInsert: widget.onInsertAtCursor != null
+              ? () => _insertCodeFromMessage(msg.text)
+              : null,
         );
     }
   }
+
+  /// Extrai o primeiro bloco de código da mensagem e insere no cursor.
+  void _insertCodeFromMessage(String markdown) {
+    // Tenta extrair um bloco de código ```...```
+    final codeBlockRegex = RegExp(r'```[\w]*\n?([\s\S]*?)```');
+    final match = codeBlockRegex.firstMatch(markdown);
+    final toInsert = match != null ? match.group(1)?.trim() ?? markdown : markdown;
+
+    widget.onInsertAtCursor?.call(toInsert);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Código inserido no cursor ✓'),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: ThemeProvider.of(context).current.surface,
+      ),
+    );
+  }
+
+  // ─── Menu de comandos rápidos ────────────────────────────────────────────
+
+  Widget _buildQuickCommandsMenu(JalideThemeVariant theme) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOut,
+      decoration: BoxDecoration(
+        color: theme.surface,
+        border: Border(
+          top: BorderSide(color: theme.border, width: 0.5),
+          bottom: BorderSide(color: theme.border, width: 0.5),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 14, top: 8, bottom: 4),
+            child: Text(
+              'COMANDOS RÁPIDOS',
+              style: TextStyle(
+                color: theme.textMuted,
+                fontSize: 9,
+                letterSpacing: 1.2,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          ..._quickCommands.map((cmd) => _QuickCommandTile(
+            command: cmd,
+            theme: theme,
+            onTap: () => _applyQuickCommand(cmd),
+          )),
+          const SizedBox(height: 4),
+        ],
+      ),
+    );
+  }
+
+  // ─── Barra de input ──────────────────────────────────────────────────────
 
   Widget _buildInputBar(JalideThemeVariant theme) {
     return Container(
@@ -316,12 +550,12 @@ class _AIChatPanelState extends State<AIChatPanel> {
                 fontFamily: 'monospace',
               ),
               decoration: InputDecoration(
-                hintText: 'Pergunte sobre o código…',
+                hintText: 'Pergunte sobre o código… (/ para comandos)',
                 hintStyle: TextStyle(color: theme.textMuted, fontSize: 13),
                 border: InputBorder.none,
                 contentPadding: const EdgeInsets.symmetric(vertical: 6),
               ),
-              textInputAction: TextInputAction.newline,
+              textInputAction: TextInputAction.send,
               onSubmitted: (_) => _sendMessage(),
             ),
           ),
@@ -329,24 +563,66 @@ class _AIChatPanelState extends State<AIChatPanel> {
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 200),
             child: _isSending
-                ? Padding(
-                    padding: const EdgeInsets.all(10),
-                    child: SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation(theme.accent),
-                      ),
+                ? Tooltip(
+                    key: const ValueKey('cancel'),
+                    message: 'Cancelar resposta',
+                    child: IconButton(
+                      icon: Icon(Icons.stop_circle_outlined, color: theme.accent, size: 24),
+                      onPressed: _cancelStream,
                     ),
                   )
                 : IconButton(
+                    key: const ValueKey('send'),
                     icon: Icon(Icons.send_rounded, color: theme.accent, size: 22),
                     onPressed: _sendMessage,
                     tooltip: 'Enviar',
                   ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ─── Tile de comando rápido ──────────────────────────────────────────────────
+
+class _QuickCommandTile extends StatelessWidget {
+  final _QuickCommand command;
+  final JalideThemeVariant theme;
+  final VoidCallback onTap;
+
+  const _QuickCommandTile({
+    required this.command,
+    required this.theme,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        child: Row(
+          children: [
+            Text(command.icon, style: const TextStyle(fontSize: 14)),
+            const SizedBox(width: 10),
+            Text(
+              command.trigger,
+              style: TextStyle(
+                color: theme.accent,
+                fontSize: 13,
+                fontFamily: 'monospace',
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              command.label,
+              style: TextStyle(color: theme.textMuted, fontSize: 12),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -427,10 +703,12 @@ class _UserBubble extends StatelessWidget {
   }
 }
 
-/// Bolha da IA — alinhada à esquerda, com Markdown e botão de copiar.
+/// Bolha da IA — alinhada à esquerda, com Markdown e botões de ação.
 class _AIBubble extends StatelessWidget {
-  final _ChatMessage msg;
+  final ChatMessage msg;
   final JalideThemeVariant theme;
+
+  /// Se não-null, mostra o botão "Inserir no cursor".
   final VoidCallback? onInsert;
 
   const _AIBubble({
@@ -521,11 +799,24 @@ class _AIBubble extends StatelessWidget {
   }
 
   Widget _buildActions(BuildContext context) {
+    // Verifica se a resposta contém bloco de código
+    final hasCode = msg.text.contains('```');
+
     return Padding(
       padding: const EdgeInsets.only(top: 8),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
+          // Botão inserir no cursor (só aparece se há código E callback disponível)
+          if (hasCode && onInsert != null) ...[
+            _ActionChip(
+              icon: Icons.keyboard_tab_rounded,
+              label: 'Inserir',
+              color: theme.accent,
+              onTap: onInsert!,
+            ),
+            const SizedBox(width: 6),
+          ],
           _ActionChip(
             icon: Icons.copy_all_rounded,
             label: 'Copiar',

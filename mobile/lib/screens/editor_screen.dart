@@ -86,7 +86,7 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
   bool _hasTerminalBeenOpened = false;
   TerminalMode _terminalMode = TerminalMode.local;
   SshSession? _activeSshSession;
-  TerminalPanelState? _activeTerminalState;
+  TerminalInputHandler? _activeTerminalState;
   DateTime? _lastEditorTouchDown;
   bool _isRemoteProject = false;
   Future<void>? _currentSave;
@@ -99,12 +99,19 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
 
   // Configurações
   final AIService _aiService = AIService();
+  // Histórico persistente do chat — sobrevive ao fechar/reabrir o painel
+  List<ChatMessage> _chatHistory = [];
+  // Arquivo ativo na última vez que o contexto foi atualizado
+  String? _lastContextPath;
   double _fontSize = 14.0;
   bool _autoSaveEnabled = true;
   bool _ghostSuggestionsEnabled = true;
   bool _autoFormatOnSave = false;
   Timer? _autoSaveTimer;
+  // BUG2 FIX: Um timer por path de aba para evitar race condition no auto-save
+  final Map<String, Timer> _autoSaveTimers = {};
   bool _isFormatting = false; // Guard contra loop de auto-save durante formatação
+  Completer<void>? _formattingCompleter;
 
   // Teclado auxiliar
   bool _ctrlActive = false;
@@ -157,7 +164,10 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
       }
     };
     _tabController.addListener(() {
-      if (mounted) setState(() {});
+      if (mounted) {
+        setState(() {});
+        _onActiveFileChanged();
+      }
     });
     _sshProfileManager.load();
     _sshConnectionManager = SshConnectionManager(
@@ -171,6 +181,12 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
     SshForegroundService.addDataCallback(_onForegroundServiceData);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadPreferences();
+      // #14 FIX: reseta _ctrlActive quando o foco do editor muda
+      _activeFocusNode?.addListener(() {
+        if (_activeFocusNode?.hasFocus != true && _ctrlActive) {
+          setState(() => _ctrlActive = false);
+        }
+      });
     });
   }
 
@@ -293,6 +309,11 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
     _sshConnectionManager.removeListener(_onSshConnectionChanged);
     _sshConnectionManager.dispose();
     _autoSaveTimer?.cancel();
+    // BUG2 FIX: cancela todos os timers de auto-save individuais
+    for (final t in _autoSaveTimers.values) {
+      t.cancel();
+    }
+    _autoSaveTimers.clear();
     _tabController.disposeTabs();
     _tabController.dispose();
     super.dispose();
@@ -309,6 +330,63 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
     } catch (e) {
       debugPrint('❌ Erro ao inicializar AIService: $e');
     }
+    // Carrega histórico persistido em disco
+    try {
+      final raw = await _aiService.loadPersistedHistory();
+      if (raw.isNotEmpty && mounted) {
+        setState(() {
+          _chatHistory = raw.map(ChatMessage.fromJson).toList();
+        });
+        debugPrint('✅ Histórico do chat restaurado: ${raw.length} msgs');
+      }
+    } catch (e) {
+      debugPrint('⚠️ Erro ao carregar histórico do chat: $e');
+    }
+  }
+
+  /// Chamado quando a aba ativa muda — atualiza o contexto da IA silenciosamente.
+  void _onActiveFileChanged() {
+    final currentPath = _activePath;
+    if (currentPath == null || currentPath == _lastContextPath) return;
+    _lastContextPath = currentPath;
+
+    // Só atualiza contexto se há uma sessão ativa
+    if (_chatHistory.length <= 1) return; // Apenas msg de sistema = sem conversa
+
+    // Evita adicionar marcadores de contexto duplicados consecutivos
+    if (_chatHistory.isNotEmpty && _chatHistory.last.role == ChatMsgRole.system) {
+      final lastText = _chatHistory.last.text;
+      final fileName = currentPath.split(RegExp(r'[/\\]')).last;
+      if (lastText.contains('Contexto atualizado') && lastText.contains(fileName)) {
+        return; // Já tem marcador recente para este arquivo
+      }
+    }
+
+    final projectPaths = _projectFiles
+        .where((f) => f['isDir'] != true)
+        .map((f) => (f['path'] ?? f['name']) as String)
+        .toList();
+
+    _aiService.updateContext(
+      activeFileContent: _activeController?.text ?? '',
+      activeFilePath: currentPath,
+      languageName: _languageName,
+      projectFilePaths: projectPaths,
+      openTabsPaths: _tabController.openTabs.map((t) => t.path ?? 'untitled').toList(),
+    ).then((_) {
+      // Adiciona marcador visual de contexto atualizado no chat
+      if (mounted && _chatHistory.isNotEmpty) {
+        final fileName = currentPath.split(RegExp(r'[/\\]')).last;
+        setState(() {
+          _chatHistory.add(ChatMessage(
+            role: ChatMsgRole.system,
+            text: '↺ Contexto atualizado: $fileName',
+          ));
+        });
+      }
+    }).catchError((e) {
+      debugPrint('⚠️ Falha ao atualizar contexto da IA: $e');
+    });
   }
 
   Future<void> _loadPreferences() async {
@@ -522,6 +600,11 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
       final tab = _tabController.openTabs[i];
       if (tab.isRemote && tab.path != null) {
         try {
+          // Preserva alterações não salvas do usuário
+          if (tab.hasUnsavedChanges) {
+            debugPrint('⚠️ Pulando recarga da aba remota ${tab.path} — alterações não salvas preservadas');
+            continue;
+          }
           debugPrint('🔄 Recarregando conteúdo da aba remota: ${tab.path}');
           final content = await session.readFile(tab.path!);
           if (mounted) {
@@ -887,8 +970,13 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
 
     try {
       final content = _activeController!.text;
-      final file = File(finalPath);
-      await file.writeAsString(content);
+      final activeTab = _tabController.activeTab;
+      // BUG1 FIX: usa _writeFileContent para suportar SSH/SAF corretamente
+      await _writeFileContent(
+        finalPath,
+        content,
+        activeTab?.isRemote ?? false,
+      );
       _tabController.updateTabPath(_tabController.activeTabIndex, finalPath);
       _tabController.updateTabLanguageFromPath(
         _tabController.activeTabIndex, finalPath,
@@ -908,18 +996,28 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
   }
 
   void _triggerAutoSave(EditorTab tab) {
-    _autoSaveTimer?.cancel();
-    _autoSaveTimer = Timer(const Duration(milliseconds: 1500), () async {
+    // BUG2 FIX: timer individual por path da aba, evita que a aba A cancele o save da aba B
+    if (tab.path == null) return;
+
+    final tabPath = tab.path!;
+    _autoSaveTimers[tabPath]?.cancel();
+    _autoSaveTimers[tabPath] = Timer(const Duration(milliseconds: 1500), () async {
       if (!mounted) return;
       if (_currentSave != null) return;
 
-      final tabIndex = _tabController.openTabs.indexOf(tab);
-      if (tabIndex != -1 && tab.hasUnsavedChanges && tab.path != null) {
+      // Revalida o índice — o usuário pode ter fechado a aba enquanto o timer rodava
+      final currentIndex = _tabController.openTabs.indexOf(tab);
+      if (currentIndex == -1) {
+        _autoSaveTimers.remove(tabPath);
+        return;
+      }
+
+      if (tab.hasUnsavedChanges && tab.path != null) {
         final path = tab.path!;
         final isRemote = tab.isRemote;
 
         // Formata primeiro; _isFormatting suprime o loop de auto-save
-        if (_autoFormatOnSave && tabIndex == _tabController.activeTabIndex) {
+        if (_autoFormatOnSave && currentIndex == _tabController.activeTabIndex) {
           _formatCode(silent: true);
           // Aguarda o frame para que controller.text reflita o texto formatado
           await Future.microtask(() {});
@@ -933,12 +1031,15 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
         try {
           await future;
           if (!mounted) return;
-          _tabController.markTabSaved(tabIndex);
+          _tabController.markTabSaved(currentIndex);
         } catch (e) {
           debugPrint('Auto-save error: $e');
         } finally {
           _currentSave = null;
+          _autoSaveTimers.remove(tabPath);
         }
+      } else {
+        _autoSaveTimers.remove(tabPath);
       }
     });
   }
@@ -1059,10 +1160,11 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
     _handleEditorKey(key);
   }
 
+  // M4 FIX: usa null-safe para evitar crash quando _activeFocusNode é null
   bool get _isTerminalActive =>
       _isTerminalVisible &&
       _activeTerminalState != null &&
-      (_tabController.activeTabIndex == -1 || !_activeFocusNode!.hasFocus);
+      (_tabController.activeTabIndex == -1 || _activeFocusNode?.hasFocus != true);
 
   void _handleTerminalKey(String key) {
     if (key == 'Ctrl') {
@@ -1169,12 +1271,16 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
 
   void _pasteFromClipboard() {
     _tabController.forceRecordActiveTabHistory();
+    final controller = _activeController;
+    if (controller == null) return;
     Clipboard.getData(Clipboard.kTextPlain).then((data) {
-      if (data?.text != null) {
-        final text = _activeController!.text;
-        final sel = _activeController!.selection;
+      if (data?.text != null && mounted) {
+        final currentController = _activeController;
+        if (currentController == null) return;
+        final text = currentController.text;
+        final sel = currentController.selection;
         if (sel.isValid) {
-          _activeController!.value = _activeController!.value.copyWith(
+          currentController.value = currentController.value.copyWith(
             text:
                 text.substring(0, sel.start) +
                 data!.text! +
@@ -1189,14 +1295,16 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
   }
 
   void _cutSelection() {
-    final sel = _activeController!.selection;
+    final controller = _activeController;
+    if (controller == null) return;
+    final sel = controller.selection;
     if (sel.isValid && !sel.isCollapsed) {
       _tabController.forceRecordActiveTabHistory();
-      final text = _activeController!.text;
+      final text = controller.text;
       Clipboard.setData(
         ClipboardData(text: text.substring(sel.start, sel.end)),
       );
-      _activeController!.value = _activeController!.value.copyWith(
+      controller.value = controller.value.copyWith(
         text: text.substring(0, sel.start) + text.substring(sel.end),
         selection: TextSelection.collapsed(offset: sel.start),
       );
@@ -1206,8 +1314,10 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
 
   void _duplicateLine() {
     _tabController.forceRecordActiveTabHistory();
-    final text = _activeController!.text;
-    final sel = _activeController!.selection;
+    final controller = _activeController;
+    if (controller == null) return;
+    final text = controller.text;
+    final sel = controller.selection;
     if (sel.isValid) {
       final before = text.substring(0, sel.start);
       final lines = before.split('\n');
@@ -1217,7 +1327,7 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
       final end = lineEnd == -1 ? text.length : lineEnd;
       final line = text.substring(lineStart, end);
       final newText = '${text.substring(0, end)}\n$line${text.substring(end)}';
-      _activeController!.value = _activeController!.value.copyWith(
+      controller.value = controller.value.copyWith(
         text: newText,
         selection: TextSelection.collapsed(offset: end + 1 + line.length),
       );
@@ -1287,16 +1397,18 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
   }
 
   void _moveCursorUp() {
-    final text = _activeController!.text;
-    final sel = _activeController!.selection;
+    final controller = _activeController;
+    if (controller == null) return;
+    final text = controller.text;
+    final sel = controller.selection;
     if (sel.isValid) {
       final before = text.substring(0, sel.start);
       final lines = before.split('\n');
       if (lines.length > 1) {
         final col = lines.last.length;
         final prevLine = lines[lines.length - 2];
-        final prevStart = before.length - col - 1 - prevLine.length;
-        _activeController!.selection = TextSelection.collapsed(
+        final prevStart = (before.length - col - 1 - prevLine.length).clamp(0, before.length);
+        controller.selection = TextSelection.collapsed(
           offset: prevStart + col.clamp(0, prevLine.length),
         );
       }
@@ -1440,16 +1552,27 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
             );
           }
         } else {
-          newSelection = const TextSelection.collapsed(offset: -1);
+          newSelection = TextSelection.collapsed(
+            offset: controller.text.length.clamp(0, controller.text.length),
+          );
         }
 
-        // Sinaliza que estamos formatando para suprimir o loop de auto-save
+        // BUG3 FIX: sinaliza formatação e reseta via microtask para ser async-safe
         _isFormatting = true;
+        _formattingCompleter?.complete();
+        _formattingCompleter = Completer<void>();
+        final completer = _formattingCompleter!;
         controller.value = controller.value.copyWith(
           text: formatted,
           selection: newSelection,
         );
-        _isFormatting = false;
+        // Garante que _isFormatting é resetado após todos os listeners do frame
+        Future.microtask(() {
+          if (!completer.isCompleted) {
+            _isFormatting = false;
+            completer.complete();
+          }
+        });
         if (!silent) {
           _showToast('Código formatado com sucesso', type: _ToastType.success);
         }
@@ -1459,7 +1582,9 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
         }
       }
     } catch (e) {
-      _isFormatting = false; // Garante reset mesmo em caso de erro
+      // BUG3 FIX: reseta _isFormatting mesmo em erro, via microtask
+      _formattingCompleter?.complete();
+      Future.microtask(() => _isFormatting = false);
       if (!silent) {
         _showToast('Erro ao formatar: $e', type: _ToastType.error);
       }
@@ -1618,7 +1743,22 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
         }
       }
 
-      if (affectedCurrentFile && _tabController.activeTabIndex != -1) {
+      // BUG5 FIX: fecha TODAS as abas cujos arquivos estão dentro do item deletado
+      if (isDir) {
+        // Coleta todos os índices afetados (em ordem decrescente para fechar sem shift)
+        final affectedIndices = <int>[];
+        for (int i = 0; i < _tabController.openTabs.length; i++) {
+          final tabPath = _tabController.openTabs[i].path;
+          if (tabPath != null &&
+              (tabPath == path || tabPath.startsWith('$path/'))) {
+            affectedIndices.add(i);
+          }
+        }
+        // Fecha do maior para o menor índice para não deslocar os anteriores
+        for (final idx in affectedIndices.reversed) {
+          _tabController.closeTab(idx);
+        }
+      } else if (affectedCurrentFile && _tabController.activeTabIndex != -1) {
         _closeTab(_tabController.activeTabIndex);
       }
 
@@ -2300,14 +2440,11 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
                           mode: _terminalMode,
                           sshSession: _activeSshSession,
                           projectPath: _projectPath,
-                          onTerminalStateChanged: (state) {
-                            if (state != null) {
-                              _activeTerminalState = state;
+                          onTerminalStateChanged: (handler) {
+                            if (handler != null) {
+                              _activeTerminalState = handler;
                             } else {
-                              if (_activeTerminalState != null &&
-                                  !_activeTerminalState!.mounted) {
-                                _activeTerminalState = null;
-                              }
+                              _activeTerminalState = null;
                             }
                           },
                         ),
@@ -2362,7 +2499,10 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
       leading: Builder(
         builder: (context) => IconButton(
           icon: Icon(Icons.menu, color: _theme.textMuted, size: 20),
-          onPressed: () => Scaffold.of(context).openDrawer(),
+          onPressed: () {
+            _activeFocusNode?.unfocus(); // #15 FIX: fecha teclado ao abrir drawer
+            Scaffold.of(context).openDrawer();
+          },
         ),
       ),
       title: Padding(
@@ -2451,7 +2591,9 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
           icon: Icon(
             Icons.save_outlined,
             size: 20,
-            color: _tabController.activeTabIndex != -1 ? _theme.accent : _theme.textMuted,
+            color: _tabController.activeTabIndex != -1 && _activeHasUnsavedChanges
+                ? _theme.accent
+                : _theme.textMuted,
           ),
           tooltip: AppLocalizations.of(context)!.save,
         ),
@@ -2810,6 +2952,7 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
             await _loadRemoteProjectFiles(home);
             await _reloadRemoteTabsContent();
             if (mounted) {
+              _activeFocusNode?.unfocus(); // #15 FIX: fecha teclado ao abrir drawer remoto
               _scaffoldKey.currentState?.openDrawer();
               _showToast('Conectado! Explorer remoto aberto em $home');
             }
@@ -2862,6 +3005,23 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
       builder: (_) => AIChatPanel(
         aiService: _aiService,
         contextSummary: contextSummary,
+        activeFileName: fileName,
+        initialMessages: _chatHistory,
+        onMessagesChanged: (msgs) {
+          _chatHistory = List<ChatMessage>.from(msgs);
+        },
+        onInsertAtCursor: (text) {
+          final ctrl = _activeController;
+          if (ctrl == null) return;
+          final sel = ctrl.selection;
+          final current = ctrl.text;
+          final offset = sel.isValid ? sel.baseOffset : current.length;
+          final newText = current.substring(0, offset) + text + current.substring(offset);
+          ctrl.value = ctrl.value.copyWith(
+            text: newText,
+            selection: TextSelection.collapsed(offset: offset + text.length),
+          );
+        },
       ),
     );
   }
