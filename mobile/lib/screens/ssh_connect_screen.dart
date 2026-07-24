@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../services/ssh_connection_manager.dart';
+import '../services/ssh_host_key_service.dart';
 import '../services/ssh_service.dart';
 import '../theme/jalide_theme.dart';
 
@@ -8,6 +10,7 @@ import '../theme/jalide_theme.dart';
 /// Exibe perfis salvos e permite criar, editar e conectar.
 class SshConnectScreen extends StatefulWidget {
   final SshProfileManager profileManager;
+  final SshConnectionManager connectionManager;
   final Future<void> Function(SshSession session) onConnected;
   final SshSession? currentSession;
   final Future<void> Function()? onDisconnect;
@@ -15,6 +18,7 @@ class SshConnectScreen extends StatefulWidget {
   const SshConnectScreen({
     super.key,
     required this.profileManager,
+    required this.connectionManager,
     required this.onConnected,
     this.currentSession,
     this.onDisconnect,
@@ -25,7 +29,6 @@ class SshConnectScreen extends StatefulWidget {
 }
 
 class _SshConnectScreenState extends State<SshConnectScreen> {
-  SshSession? _connectingSession;
   String? _connectingId;
   String? _testingId;
 
@@ -34,22 +37,136 @@ class _SshConnectScreenState extends State<SshConnectScreen> {
   Future<void> _connect(SshProfile profile) async {
     setState(() {
       _connectingId = profile.id;
-      _connectingSession = SshSession(profile: profile);
     });
 
     try {
-      await _connectingSession!.connect();
+      final success = await widget.connectionManager.connect(
+        profile,
+        onHostKeyVerify: (type, fingerprint) => _verifyHostKey(profile, type, fingerprint),
+      );
+      if (!success) throw Exception('Falha ao conectar');
+      final session = widget.connectionManager.currentSession;
+      if (session == null) throw Exception('Sessão não disponível');
       if (!mounted) return;
-      await widget.onConnected(_connectingSession!);
+      await widget.onConnected(session);
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _connectingId = null;
-        _connectingSession = null;
       });
       _showError('Falha na conexão: $e');
     }
+  }
+
+  /// Verifica host key: mostra dialog para o usuário confirmar host novo ou alerta MITM.
+  Future<bool> _verifyHostKey(SshProfile profile, String type, List<int> fingerprint) async {
+    final status = await SshHostKeyService.verify(
+      host: profile.host,
+      port: profile.port,
+      type: type,
+      fingerprint: fingerprint,
+    );
+
+    if (status == HostKeyStatus.trusted) return true;
+
+    if (!mounted) return false;
+
+    // Mostra dialog para confirmação
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: _theme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: Row(
+          children: [
+            Icon(
+              status == HostKeyStatus.changed ? Icons.warning_amber_rounded : Icons.help_outline,
+              color: status == HostKeyStatus.changed ? const Color(0xFFF7768E) : const Color(0xFFF6C177),
+              size: 22,
+            ),
+            const SizedBox(width: 10),
+            Text(
+              status == HostKeyStatus.changed ? 'Host Key Alterado!' : 'Novo Servidor',
+              style: TextStyle(color: _theme.textPri, fontSize: 15),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (status == HostKeyStatus.changed)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text(
+                  'A chave deste servidor mudou desde a última conexão. '
+                  'Isso pode indicar um ataque Man-in-the-Middle.',
+                  style: TextStyle(color: const Color(0xFFF7768E), fontSize: 12),
+                ),
+              ),
+            Text(
+              '${profile.host}:${profile.port}',
+              style: TextStyle(color: _theme.textPri, fontFamily: 'monospace', fontSize: 13, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Tipo: $type',
+              style: TextStyle(color: _theme.textMuted, fontSize: 11),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Fingerprint:',
+              style: TextStyle(color: _theme.textMuted, fontSize: 11),
+            ),
+            const SizedBox(height: 2),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                SshHostKeyService.formatFingerprint(fingerprint),
+                style: const TextStyle(color: Color(0xFF7AA2F7), fontFamily: 'monospace', fontSize: 10),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Rejeitar', style: TextStyle(color: _theme.textMuted)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: status == HostKeyStatus.changed
+                  ? const Color(0xFFF7768E)
+                  : const Color(0xFF7AA2F7),
+            ),
+            child: Text(
+              status == HostKeyStatus.changed ? 'Conectar Mesmo Assim' : 'Conectar',
+              style: const TextStyle(color: Colors.white, fontSize: 12),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true) {
+      await SshHostKeyService.trust(
+        host: profile.host,
+        port: profile.port,
+        type: type,
+        fingerprint: fingerprint,
+      );
+      return true;
+    }
+
+    return false;
   }
 
   void _showError(String msg) {
@@ -145,11 +262,13 @@ class _SshConnectScreenState extends State<SshConnectScreen> {
   Future<void> _testConnection(SshProfile profile) async {
     setState(() => _testingId = profile.id);
 
-    final testSession = SshSession(profile: profile);
-
     try {
-      await testSession.connect();
-      await testSession.disconnect();
+      final success = await widget.connectionManager.connect(
+        profile,
+        onHostKeyVerify: (type, fingerprint) => _verifyHostKey(profile, type, fingerprint),
+      );
+      if (!success) throw Exception('Falha ao conectar');
+      await widget.connectionManager.disconnect();
       if (!mounted) return;
       setState(() => _testingId = null);
       _showSuccess('Conexão OK com ${profile.label}');

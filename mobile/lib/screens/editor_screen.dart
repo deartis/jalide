@@ -27,6 +27,7 @@ import '../utils/file_utils.dart';
 import '../services/ai_service.dart';
 import '../services/ssh_connection_manager.dart';
 import '../services/ssh_foreground_service.dart';
+import '../services/ssh_host_key_service.dart';
 import '../services/ssh_session_state_service.dart';
 import '../theme/jalide_theme.dart';
 import '../controllers/editor_tab_controller.dart';
@@ -195,8 +196,6 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
 
     // Garante que o sshd do Termux foi acionado/iniciado antes de tentar reconectar
     await _startTermuxSshdIfNeeded();
-    // Pequeno delay para dar tempo ao daemon do sshd de inicializar e escutar a porta
-    await Future.delayed(const Duration(milliseconds: 600));
 
     // Tenta reconectar silenciosamente à última sessão SSH ao iniciar o app
     final persistedState = await SshSessionStateService.load();
@@ -206,7 +205,10 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
       final profile = await _sshConnectionManager.getLastSuccessfulProfile();
       if (profile != null && mounted) {
         debugPrint('🔄 Tentando reconexão silenciosa com: ${profile.label}');
-        final success = await _sshConnectionManager.connect(profile);
+        final success = await _sshConnectionManager.connect(
+          profile,
+          onHostKeyVerify: _silentHostKeyVerify,
+        );
         if (success && mounted) {
           setState(() {
             _activeSshSession = _sshConnectionManager.currentSession;
@@ -268,7 +270,7 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
         _sshConnectionManager.disconnect();
       } else if (action == 'exit') {
         debugPrint('📲 Botão sair da notificação pressionado. Encerrando app...');
-        exit(0);
+        SystemNavigator.pop();
       }
     }
   }
@@ -2931,15 +2933,29 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
     _showToast('SSH desconectado');
   }
 
+  /// Verificação silenciosa de host key para reconexões automáticas.
+  /// Aceita hosts confiáveis, rejeita hosts que mudaram (sem dialog).
+  Future<bool> _silentHostKeyVerify(String type, List<int> fingerprint) async {
+    final profile = _sshConnectionManager.currentSession?.profile;
+    if (profile == null) return false;
+    final status = await SshHostKeyService.verify(
+      host: profile.host,
+      port: profile.port,
+      type: type,
+      fingerprint: fingerprint,
+    );
+    return status == HostKeyStatus.trusted;
+  }
+
   void _openSshScreen() {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => SshConnectScreen(
           profileManager: _sshProfileManager,
+          connectionManager: _sshConnectionManager,
           currentSession: _activeSshSession,
           onDisconnect: _disconnectSshSession,
           onConnected: (session) async {
-            // Usa o SshConnectionManager para gerenciar a conexão
             setState(() {
               _activeSshSession = session;
               _terminalMode = TerminalMode.ssh;
@@ -2947,15 +2963,12 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
               _isTerminalVisible = true;
             });
 
-            // Registra na sessão do gerenciador
-            await _sshConnectionManager.setCurrentSession(session, session.profile);
-
-            // Ao conectar, pergunta se quer abrir a home remota
+            // A sessão já está gerenciada pelo SshConnectionManager (connect + health check + foreground service)
             final home = await session.getHomeDir();
             await _loadRemoteProjectFiles(home);
             await _reloadRemoteTabsContent();
             if (mounted) {
-              _activeFocusNode?.unfocus(); // #15 FIX: fecha teclado ao abrir drawer remoto
+              _activeFocusNode?.unfocus();
               _scaffoldKey.currentState?.openDrawer();
               _showToast('Conectado! Explorer remoto aberto em $home');
             }

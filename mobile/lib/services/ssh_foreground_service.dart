@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
 // ─── Callback de entrypoint do Foreground Service ───────────────────────────
@@ -34,14 +35,13 @@ class _SshKeepAliveTaskHandler extends TaskHandler {
 
   @override
   void onNotificationButtonPressed(String id) {
-    // Botão "Desconectar" na notificação
     if (id == 'btn_disconnect') {
       FlutterForegroundTask.sendDataToMain({'action': 'disconnect'});
       FlutterForegroundTask.stopService();
     } else if (id == 'btn_exit') {
       FlutterForegroundTask.sendDataToMain({'action': 'exit'});
       FlutterForegroundTask.stopService();
-      exit(0);
+      SystemNavigator.pop();
     }
   }
 

@@ -30,6 +30,9 @@ class SshProfile {
     this.privateKeyPem,
   });
 
+  bool get hasValidAuth => (password != null && password!.isNotEmpty) ||
+      (privateKeyPem != null && privateKeyPem!.isNotEmpty);
+
   Map<String, String> toMap() {
     final m = {
       'id': id,
@@ -106,7 +109,37 @@ class SshSession {
     _inputSink?.add(Uint8List.fromList(utf8.encode(data)));
   }
 
-  Future<void> connect() async {
+  /// Aguarda o sshd do Termux estar pronto via polling (máx 3 tentativas)
+  Future<void> _waitForSshd() async {
+    const maxAttempts = 3;
+    const delayBetweenAttempts = Duration(milliseconds: 500);
+    for (int i = 0; i < maxAttempts; i++) {
+      try {
+        final socket = await Socket.connect(
+          profile.host,
+          profile.port,
+          timeout: const Duration(seconds: 2),
+        );
+        await socket.close();
+        debugPrint('✅ [SshSession] sshd pronto na tentativa ${i + 1}');
+        return;
+      } catch (_) {
+        if (i < maxAttempts - 1) {
+          debugPrint('⏳ [SshSession] sshd ainda não pronto, tentativa ${i + 1}/$maxAttempts...');
+          await Future.delayed(delayBetweenAttempts);
+        }
+      }
+    }
+    debugPrint('⚠️ [SshSession] sshd pode não estar pronto, tentando conectar mesmo assim...');
+  }
+
+  Future<void> connect({Future<bool> Function(String type, List<int> fingerprint)? onHostKeyVerify}) async {
+    if (!profile.hasValidAuth) {
+      state = SshConnectionState.error;
+      errorMessage = 'Nenhuma credencial fornecida. Informe uma senha ou chave SSH.';
+      throw Exception(errorMessage);
+    }
+
     state = SshConnectionState.connecting;
 
     if (Platform.isAndroid && (profile.host == '127.0.0.1' || profile.host == 'localhost')) {
@@ -116,8 +149,8 @@ class SshSession {
           'script': 'pgrep sshd || sshd',
         });
         debugPrint('✅ [SshSession] Comando de inicialização do sshd enviado ao Termux.');
-        // Pequeno delay para dar tempo ao daemon do sshd de inicializar e escutar a porta
-        await Future.delayed(const Duration(milliseconds: 600));
+        // Polling: aguarda o sshd estar pronto com retry
+        await _waitForSshd();
       } catch (e) {
         debugPrint('⚠️ [SshSession] Erro ao tentar iniciar sshd no Termux: $e');
       }
@@ -141,9 +174,10 @@ class SshSession {
           ? () => profile.password!
           : null,
       identities: identities,
-      // Mantém o socket vivo a nível de protocolo SSH.
-      // Essencial para redes móveis que encerram conexões TCP ociosas.
       keepAliveInterval: const Duration(seconds: 15),
+      onVerifyHostKey: onHostKeyVerify != null
+          ? (type, fingerprint) => onHostKeyVerify(type, fingerprint)
+          : null,
     );
 
     await _client!.authenticated;
@@ -230,12 +264,23 @@ class SshSession {
   }
 
   /// Lê conteúdo de um arquivo remoto como String
-  Future<String> readFile(String path) async {
+  /// Lança exceção se o arquivo ultrapassar [maxSizeBytes] (padrão: 10MB)
+  Future<String> readFile(String path, {int maxSizeBytes = 10 * 1024 * 1024}) async {
     final sftp = await _getSftp();
     final file = await sftp.open(path);
-    final bytes = await file.readBytes();
-    await file.close();
-    return utf8.decode(bytes);
+    try {
+      final stat = await file.stat();
+      if (stat.size != null && stat.size! > maxSizeBytes) {
+        throw Exception(
+          'Arquivo muito grande (${(stat.size! / 1024 / 1024).toStringAsFixed(1)}MB). '
+          'Máximo permitido: ${(maxSizeBytes / 1024 / 1024).toStringAsFixed(0)}MB.',
+        );
+      }
+      final bytes = await file.readBytes();
+      return utf8.decode(bytes);
+    } finally {
+      await file.close();
+    }
   }
 
   /// Salva conteúdo de volta no arquivo remoto
@@ -263,8 +308,14 @@ class SshSession {
 
   /// Exclui arquivo ou pasta remota
   Future<void> deletePath(String path, {required bool isDir}) async {
-    final command = isDir ? 'rm -rf' : 'rm -f';
-    await _client!.run('$command ${_escapeShellArg(path)}');
+    if (isDir) {
+      // SFTP não suporta rm recursivo — usa shell com escape seguro
+      await _client!.run('rm -rf ${_escapeShellArg(path)}');
+    } else {
+      // Para arquivos, usa SFTP (mais seguro que shell)
+      final sftp = await _getSftp();
+      await sftp.remove(path);
+    }
   }
 
   /// Renomeia arquivo ou pasta remota
@@ -284,22 +335,27 @@ class SshSession {
   }
 
   Future<void> disconnect() async {
-    _stdoutSubscription?.cancel();
-    _stderrSubscription?.cancel();
-    await _outputController?.close();
-    await _inputSink?.close();
-    _shellSession?.close();
-    _sftp?.close();
-    _client?.close();
-    state = SshConnectionState.disconnected;
-    _stdoutSubscription = null;
-    _stderrSubscription = null;
-    _inputSink = null;
-    _sftp = null;
-    _sftpFuture = null;
-    _shellSession = null;
-    _client = null;
-    _outputController = null;
+    try {
+      _stdoutSubscription?.cancel();
+      _stderrSubscription?.cancel();
+      await _outputController?.close().catchError((_) {});
+      await _inputSink?.close().catchError((_) {});
+      _shellSession?.close();
+      _sftp?.close();
+      _client?.close();
+    } catch (e) {
+      debugPrint('⚠️ Erro durante disconnect SSH: $e');
+    } finally {
+      state = SshConnectionState.disconnected;
+      _stdoutSubscription = null;
+      _stderrSubscription = null;
+      _inputSink = null;
+      _sftp = null;
+      _sftpFuture = null;
+      _shellSession = null;
+      _client = null;
+      _outputController = null;
+    }
   }
 }
 

@@ -20,10 +20,13 @@ class SshConnectionManager extends ChangeNotifier {
   SshProfile? _lastSuccessfulProfile;
   Timer? _healthCheckTimer;
   Timer? _reconnectTimer;
+  int _listeningToSessionHashCode = 0;
+  Future<bool> Function(String type, List<int> fingerprint)? _lastHostKeyVerifyCallback;
 
   bool _autoReconnectEnabled = true;
   int _heartbeatIntervalSeconds = 30;
   int _reconnectAttempts = 0;
+  bool _isReconnecting = false;
   final int _maxReconnectAttempts = 5;
   final int _initialBackoffSeconds = 2;
 
@@ -54,7 +57,9 @@ class SshConnectionManager extends ChangeNotifier {
   }
 
   /// Conecta a um perfil SSH e monitora a conexão
-  Future<bool> connect(SshProfile profile) async {
+  Future<bool> connect(SshProfile profile, {
+    Future<bool> Function(String type, List<int> fingerprint)? onHostKeyVerify,
+  }) async {
     try {
       // Garante que a sessão anterior seja desconectada e limpa
       if (_currentSession != null) {
@@ -67,9 +72,10 @@ class SshConnectionManager extends ChangeNotifier {
 
       _currentSession = SshSession(profile: profile);
       _connectionStateController.add(SshConnectionState.connecting);
+      _lastHostKeyVerifyCallback = onHostKeyVerify;
       notifyListeners();
 
-      await _currentSession!.connect();
+      await _currentSession!.connect(onHostKeyVerify: onHostKeyVerify);
 
       // Salva como última conexão bem-sucedida
       await _saveLastSession(profile.id);
@@ -154,16 +160,21 @@ class SshConnectionManager extends ChangeNotifier {
 
   /// Evita disparar múltiplos fluxos de reconexão concorrentes
   void _triggerReconnection() {
-    if (_reconnectTimer?.isActive ?? false) {
-      debugPrint('ℹ️ Re-conexão já está em progresso. Ignorando nova solicitação.');
+    if (_isReconnecting) {
+      debugPrint('ℹ️ Reconexão já está em progresso. Ignorando nova solicitação.');
       return;
     }
     _reconnectAttempts = 0;
+    _isReconnecting = true;
     _attemptReconnect();
   }
 
-  /// Escuta fechamento de conexão reativamente
+  /// Escuta fechamento de conexão reativamente (evita listeners duplicados)
   void _listenToConnectionClose(SshSession session) {
+    final hashCode = session.hashCode;
+    if (_listeningToSessionHashCode == hashCode) return;
+    _listeningToSessionHashCode = hashCode;
+
     session.client?.done.then((_) async {
       if (_currentSession == session && session.state == SshConnectionState.connected) {
         debugPrint('⚠️ SSHClient.done completado. Conexão perdida!');
@@ -193,6 +204,7 @@ class SshConnectionManager extends ChangeNotifier {
   Future<void> _attemptReconnect() async {
     if (_reconnectAttempts >= _maxReconnectAttempts) {
       debugPrint('❌ Máximo de tentativas de reconexão atingido');
+      _isReconnecting = false;
       if (_currentSession != null) {
         _currentSession!.state = SshConnectionState.error;
       }
@@ -217,12 +229,18 @@ class SshConnectionManager extends ChangeNotifier {
     _reconnectTimer?.cancel();
     _reconnectTimer = Timer(Duration(seconds: backoffSeconds), () async {
       if (_lastSuccessfulProfile != null) {
-        final success = await connect(_lastSuccessfulProfile!);
+        final success = await connect(
+          _lastSuccessfulProfile!,
+          onHostKeyVerify: _lastHostKeyVerifyCallback,
+        );
         if (!success) {
           await _attemptReconnect();
         } else {
           debugPrint('✅ Reconectado com sucesso!');
+          _isReconnecting = false;
         }
+      } else {
+        _isReconnecting = false;
       }
     });
   }
@@ -231,7 +249,13 @@ class SshConnectionManager extends ChangeNotifier {
   Future<bool> reconnectNow() async {
     if (_lastSuccessfulProfile == null) return false;
     _reconnectAttempts = 0;
-    return connect(_lastSuccessfulProfile!);
+    _isReconnecting = true;
+    final success = await connect(
+      _lastSuccessfulProfile!,
+      onHostKeyVerify: _lastHostKeyVerifyCallback,
+    );
+    _isReconnecting = false;
+    return success;
   }
 
   /// Verifica se a conexão está realmente ativa (com ping rápido)
@@ -294,6 +318,7 @@ class SshConnectionManager extends ChangeNotifier {
   Future<void> disconnect() async {
     _healthCheckTimer?.cancel();
     _reconnectTimer?.cancel();
+    _isReconnecting = false;
     final session = _currentSession;
     _currentSession = null;
     _reconnectAttempts = 0;
