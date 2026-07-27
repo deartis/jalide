@@ -57,7 +57,6 @@ import 'package:highlight/languages/ruby.dart' as lang_ruby;
 import 'package:highlight/languages/php.dart' as lang_php;
 import 'package:highlight/languages/cs.dart' as lang_cs;
 
-
 class EditorScreen extends StatefulWidget {
   const EditorScreen({super.key});
 
@@ -81,7 +80,8 @@ class _SnackBarStyle {
   });
 }
 
-class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver {
+class _EditorScreenState extends State<EditorScreen>
+    with WidgetsBindingObserver {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   // Controller de Tabs
@@ -125,7 +125,8 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
   Timer? _autoSaveTimer;
   // BUG2 FIX: Um timer por path de aba para evitar race condition no auto-save
   final Map<String, Timer> _autoSaveTimers = {};
-  bool _isFormatting = false; // Guard contra loop de auto-save durante formatação
+  bool _isFormatting =
+      false; // Guard contra loop de auto-save durante formatação
   int _lastLineCount = 1;
   CodeController? _listenerController;
 
@@ -180,7 +181,9 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
     _tabController.onAutoSaveTriggered = (index) {
       // Ignora mudanças causadas pelo próprio _formatCode para evitar loop
       if (_isFormatting) return;
-      if (_autoSaveEnabled && mounted && index < _tabController.openTabs.length) {
+      if (_autoSaveEnabled &&
+          mounted &&
+          index < _tabController.openTabs.length) {
         final tab = _tabController.openTabs[index];
         if (tab.hasUnsavedChanges) {
           _triggerAutoSave(tab);
@@ -237,17 +240,25 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
           setState(() {
             _activeSshSession = _sshConnectionManager.currentSession;
             _terminalMode = TerminalMode.ssh;
-            if (persistedState.isRemoteProject && persistedState.projectPath != null) {
+            if (persistedState.isRemoteProject &&
+                persistedState.projectPath != null) {
               _isRemoteProject = true;
             }
           });
-          if (persistedState.isRemoteProject && persistedState.projectPath != null && mounted) {
+          if (persistedState.isRemoteProject &&
+              persistedState.projectPath != null &&
+              mounted) {
             await _loadRemoteProjectFiles(persistedState.projectPath!);
           }
           await _reloadRemoteTabsContent();
-          _showToast('SSH reconectado: ${profile.label}', type: _ToastType.success);
+          _showToast(
+            'SSH reconectado: ${profile.label}',
+            type: _ToastType.success,
+          );
         } else {
-          debugPrint('⚠️ Reconexão silenciosa falhou. App inicia em modo local.');
+          debugPrint(
+            '⚠️ Reconexão silenciosa falhou. App inicia em modo local.',
+          );
         }
       }
     }
@@ -293,7 +304,9 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
         debugPrint('📲 Botão desconectar da notificação pressionado.');
         _sshConnectionManager.disconnect();
       } else if (action == 'exit') {
-        debugPrint('📲 Botão sair da notificação pressionado. Encerrando app...');
+        debugPrint(
+          '📲 Botão sair da notificação pressionado. Encerrando app...',
+        );
         SystemNavigator.pop();
       }
     }
@@ -359,7 +372,10 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
       }
     }
     // Rola horizontal para inicio quando cursor esta no comeco de uma linha
-    if (sel.isCollapsed && sel.start > 0 && sel.start <= text.length && text[sel.start - 1] == '\n') {
+    if (sel.isCollapsed &&
+        sel.start > 0 &&
+        sel.start <= text.length &&
+        text[sel.start - 1] == '\n') {
       _scrollHorizontalToStart();
     } else if (sel.isCollapsed && sel.start == 0) {
       _scrollHorizontalToStart();
@@ -431,13 +447,16 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
     _lastContextPath = currentPath;
 
     // Só atualiza contexto se há uma sessão ativa
-    if (_chatHistory.length <= 1) return; // Apenas msg de sistema = sem conversa
+    if (_chatHistory.length <= 1)
+      return; // Apenas msg de sistema = sem conversa
 
     // Evita adicionar marcadores de contexto duplicados consecutivos
-    if (_chatHistory.isNotEmpty && _chatHistory.last.role == ChatMsgRole.system) {
+    if (_chatHistory.isNotEmpty &&
+        _chatHistory.last.role == ChatMsgRole.system) {
       final lastText = _chatHistory.last.text;
       final fileName = currentPath.split(RegExp(r'[/\\]')).last;
-      if (lastText.contains('Contexto atualizado') && lastText.contains(fileName)) {
+      if (lastText.contains('Contexto atualizado') &&
+          lastText.contains(fileName)) {
         return; // Já tem marcador recente para este arquivo
       }
     }
@@ -447,26 +466,33 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
         .map((f) => (f['path'] ?? f['name']) as String)
         .toList();
 
-    _aiService.updateContext(
-      activeFileContent: _activeController?.text ?? '',
-      activeFilePath: currentPath,
-      languageName: _languageName,
-      projectFilePaths: projectPaths,
-      openTabsPaths: _tabController.openTabs.map((t) => t.path ?? 'untitled').toList(),
-    ).then((_) {
-      // Adiciona marcador visual de contexto atualizado no chat
-      if (mounted && _chatHistory.isNotEmpty) {
-        final fileName = currentPath.split(RegExp(r'[/\\]')).last;
-        setState(() {
-          _chatHistory.add(ChatMessage(
-            role: ChatMsgRole.system,
-            text: '↺ Contexto atualizado: $fileName',
-          ));
+    _aiService
+        .updateContext(
+          activeFileContent: _activeController?.text ?? '',
+          activeFilePath: currentPath,
+          languageName: _languageName,
+          projectFilePaths: projectPaths,
+          openTabsPaths: _tabController.openTabs
+              .map((t) => t.path ?? 'untitled')
+              .toList(),
+        )
+        .then((_) {
+          // Adiciona marcador visual de contexto atualizado no chat
+          if (mounted && _chatHistory.isNotEmpty) {
+            final fileName = currentPath.split(RegExp(r'[/\\]')).last;
+            setState(() {
+              _chatHistory.add(
+                ChatMessage(
+                  role: ChatMsgRole.system,
+                  text: '↺ Contexto atualizado: $fileName',
+                ),
+              );
+            });
+          }
+        })
+        .catchError((e) {
+          debugPrint('⚠️ Falha ao atualizar contexto da IA: $e');
         });
-      }
-    }).catchError((e) {
-      debugPrint('⚠️ Falha ao atualizar contexto da IA: $e');
-    });
   }
 
   Future<void> _loadPreferences() async {
@@ -530,7 +556,11 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
                   debugPrint('JALIDE_LOAD_PERSISTED_TAB_READ_ERROR: $e');
                 }
               }
-              _tabController.addOrActivateTab(path, content, isRemote: isRemote);
+              _tabController.addOrActivateTab(
+                path,
+                content,
+                isRemote: isRemote,
+              );
             }
           }
         }
@@ -542,8 +572,9 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
     // Load Last Active File
     final savedActiveFile = prefs.getString('last_active_file');
     if (savedActiveFile != null) {
-      final index = _tabController.openTabs
-          .indexWhere((t) => t.path == savedActiveFile);
+      final index = _tabController.openTabs.indexWhere(
+        (t) => t.path == savedActiveFile,
+      );
       if (index != -1) {
         _tabController.setActiveTab(index);
       } else {
@@ -685,7 +716,9 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
         try {
           // Preserva alterações não salvas do usuário
           if (tab.hasUnsavedChanges) {
-            debugPrint('⚠️ Pulando recarga da aba remota ${tab.path} — alterações não salvas preservadas');
+            debugPrint(
+              '⚠️ Pulando recarga da aba remota ${tab.path} — alterações não salvas preservadas',
+            );
             continue;
           }
           debugPrint('🔄 Recarregando conteúdo da aba remota: ${tab.path}');
@@ -713,7 +746,11 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
 
     final languages = [
       {'name': 'JavaScript', 'highlight': javascript, 'displayName': 'JS'},
-      {'name': 'TypeScript', 'highlight': lang_ts.typescript, 'displayName': 'TS'},
+      {
+        'name': 'TypeScript',
+        'highlight': lang_ts.typescript,
+        'displayName': 'TS',
+      },
       {'name': 'JSON', 'highlight': json, 'displayName': 'JSON'},
       {'name': 'Python', 'highlight': python, 'displayName': 'Python'},
       {'name': 'HTML', 'highlight': xml, 'displayName': 'HTML'},
@@ -771,7 +808,8 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
                   itemCount: languages.length,
                   itemBuilder: (ctx, index) {
                     final lang = languages[index];
-                    final isCurrent = _tabController.languageName == lang['displayName'];
+                    final isCurrent =
+                        _tabController.languageName == lang['displayName'];
                     return ListTile(
                       dense: true,
                       contentPadding: const EdgeInsets.symmetric(
@@ -909,8 +947,6 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
       _activeTerminalState!.sendInput('$command\n');
     }
   }
-
-
 
   Future<void> _openFileFromExplorer(String path) async {
     try {
@@ -1066,14 +1102,11 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
       final content = _activeController!.text;
       final activeTab = _tabController.activeTab;
       // BUG1 FIX: usa _writeFileContent para suportar SSH/SAF corretamente
-      await _writeFileContent(
-        finalPath,
-        content,
-        activeTab?.isRemote ?? false,
-      );
+      await _writeFileContent(finalPath, content, activeTab?.isRemote ?? false);
       _tabController.updateTabPath(_tabController.activeTabIndex, finalPath);
       _tabController.updateTabLanguageFromPath(
-        _tabController.activeTabIndex, finalPath,
+        _tabController.activeTabIndex,
+        finalPath,
       );
       _tabController.markTabSaved(_tabController.activeTabIndex);
       _saveTabsPreference();
@@ -1111,7 +1144,8 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
         final isRemote = tab.isRemote;
 
         // Formata primeiro; _isFormatting suprime o loop de auto-save
-        if (_autoFormatOnSave && currentIndex == _tabController.activeTabIndex) {
+        if (_autoFormatOnSave &&
+            currentIndex == _tabController.activeTabIndex) {
           _formatCode(silent: true);
           // Aguarda o frame para que controller.text reflita o texto formatado
           await Future.microtask(() {});
@@ -1149,7 +1183,9 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
       final isRemote = tab.isRemote;
 
       final tabIndex = _tabController.openTabs.indexOf(tab);
-      if (_autoFormatOnSave && tabIndex != -1 && tabIndex == _tabController.activeTabIndex) {
+      if (_autoFormatOnSave &&
+          tabIndex != -1 &&
+          tabIndex == _tabController.activeTabIndex) {
         _formatCode(silent: true);
         // Aguarda o frame para que controller.text reflita o texto formatado
         await Future.microtask(() {});
@@ -1188,7 +1224,9 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       if (_horizontalScrollCtrl.hasClients) {
-        try { _horizontalScrollCtrl.jumpTo(0); } catch (_) {}
+        try {
+          _horizontalScrollCtrl.jumpTo(0);
+        } catch (_) {}
       }
     });
   }
@@ -1234,7 +1272,10 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
     if (snippet == '{ }' || snippet == '[ ]') {
       offset =
           sel.start + insert.indexOf('\n$innerIndent') + 1 + innerIndent.length;
-    } else if (snippet == '( )' || snippet == '" "' || snippet == "' '" || snippet == '` `') {
+    } else if (snippet == '( )' ||
+        snippet == '" "' ||
+        snippet == "' '" ||
+        snippet == '` `') {
       offset = sel.start + 1;
     }
 
@@ -1270,7 +1311,8 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
   bool get _isTerminalActive =>
       _isTerminalVisible &&
       _activeTerminalState != null &&
-      (_tabController.activeTabIndex == -1 || _activeFocusNode?.hasFocus != true);
+      (_tabController.activeTabIndex == -1 ||
+          _activeFocusNode?.hasFocus != true);
 
   void _handleTerminalKey(String key) {
     if (key == 'Ctrl') {
@@ -1503,9 +1545,8 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
     final lineStart = before.length - currentLine.length;
     final prevLineStart = lineStart - prevLine.length - 1;
 
-    final newText = text.substring(0, prevLineStart) +
-        currentLine + '\n' + prevLine +
-        text.substring(lineStart + currentLine.length);
+    final newText =
+        '${text.substring(0, prevLineStart)}$currentLine\n$prevLine${text.substring(lineStart + currentLine.length)}';
 
     final offsetDiff = currentLine.length + 1;
     controller.value = controller.value.copyWith(
@@ -1537,9 +1578,8 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
     final end = nextLineEnd == -1 ? text.length : nextLineEnd;
     final nextLine = text.substring(lineEnd + 1, end);
 
-    final newText = text.substring(0, lineStart) +
-        nextLine + '\n' + currentLine +
-        text.substring(end);
+    final newText =
+        '${text.substring(0, lineStart)}$nextLine\n$currentLine${text.substring(end)}';
 
     final offsetDiff = nextLine.length + 1;
     controller.value = controller.value.copyWith(
@@ -1632,7 +1672,10 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
       if (lines.length > 1) {
         final col = lines.last.length;
         final prevLine = lines[lines.length - 2];
-        final prevStart = (before.length - col - 1 - prevLine.length).clamp(0, before.length);
+        final prevStart = (before.length - col - 1 - prevLine.length).clamp(
+          0,
+          before.length,
+        );
         controller.selection = TextSelection.collapsed(
           offset: prevStart + col.clamp(0, prevLine.length),
         );
@@ -1768,7 +1811,12 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
           int lineIdx = 0;
           int col = 0;
           for (int i = 0; i < selection.baseOffset; i++) {
-            if (text[i] == '\n') { lineIdx++; col = 0; } else { col++; }
+            if (text[i] == '\n') {
+              lineIdx++;
+              col = 0;
+            } else {
+              col++;
+            }
           }
           final origLines = text.split('\n');
           if (lineIdx < origLines.length) {
@@ -1788,7 +1836,8 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
         if (trailingSpaces != null && cursorLineIndex != null) {
           final fmtLines = formatted.split('\n');
           if (cursorLineIndex < fmtLines.length) {
-            fmtLines[cursorLineIndex] = fmtLines[cursorLineIndex] + trailingSpaces;
+            fmtLines[cursorLineIndex] =
+                fmtLines[cursorLineIndex] + trailingSpaces;
             formatted = fmtLines.join('\n');
           }
         }
@@ -1796,11 +1845,23 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
         TextSelection newSelection;
         if (selection.isValid) {
           if (selection.isCollapsed) {
-            final newOffset = CodeFormatter.getFormattedOffset(text, formatted, selection.baseOffset);
+            final newOffset = CodeFormatter.getFormattedOffset(
+              text,
+              formatted,
+              selection.baseOffset,
+            );
             newSelection = TextSelection.collapsed(offset: newOffset);
           } else {
-            final newBase = CodeFormatter.getFormattedOffset(text, formatted, selection.baseOffset);
-            final newExtent = CodeFormatter.getFormattedOffset(text, formatted, selection.extentOffset);
+            final newBase = CodeFormatter.getFormattedOffset(
+              text,
+              formatted,
+              selection.baseOffset,
+            );
+            final newExtent = CodeFormatter.getFormattedOffset(
+              text,
+              formatted,
+              selection.extentOffset,
+            );
             newSelection = TextSelection(
               baseOffset: newBase,
               extentOffset: newExtent,
@@ -1809,9 +1870,7 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
             );
           }
         } else {
-          newSelection = TextSelection.collapsed(
-            offset: formatted.length,
-          );
+          newSelection = TextSelection.collapsed(offset: formatted.length);
         }
 
         _isFormatting = true;
@@ -2054,7 +2113,9 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
         }
       }
 
-      if (!isDir && _activePath == path && _tabController.activeTabIndex != -1) {
+      if (!isDir &&
+          _activePath == path &&
+          _tabController.activeTabIndex != -1) {
         _tabController.updateTabPath(_tabController.activeTabIndex, newPath);
       }
 
@@ -2354,7 +2415,7 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
 
   Future<void> _showCreateDialog(bool isFile, String? basePath) async {
     final controller = TextEditingController();
-    
+
     String displayPath = 'raiz';
     if (basePath != null && _projectPath != null && basePath != _projectPath) {
       try {
@@ -2486,7 +2547,11 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
       color: const Color(0xFF8B6914).withValues(alpha: 0.85),
       child: Row(
         children: [
-          const Icon(Icons.wifi_off_rounded, color: Color(0xFFFFC107), size: 16),
+          const Icon(
+            Icons.wifi_off_rounded,
+            color: Color(0xFFFFC107),
+            size: 16,
+          ),
           const SizedBox(width: 8),
           const Expanded(
             child: Text(
@@ -2530,6 +2595,7 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
       ),
     );
   }
+
   /// Sheet de opções SSH — aberto ao tocar no chip da status bar.
   void _showSshStatusSheet(BuildContext context) {
     final session = _sshConnectionManager.currentSession;
@@ -2551,8 +2617,12 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
             Row(
               children: [
                 Icon(
-                  isConnected ? Icons.cloud_done_rounded : Icons.cloud_off_rounded,
-                  color: isConnected ? const Color(0xFF4CAF50) : const Color(0xFF9E9E9E),
+                  isConnected
+                      ? Icons.cloud_done_rounded
+                      : Icons.cloud_off_rounded,
+                  color: isConnected
+                      ? const Color(0xFF4CAF50)
+                      : const Color(0xFF9E9E9E),
                   size: 18,
                 ),
                 const SizedBox(width: 8),
@@ -2580,8 +2650,15 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
             if (!isConnected)
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: Icon(Icons.refresh_rounded, color: _theme.textPri, size: 20),
-                title: Text('Reconectar agora', style: TextStyle(color: _theme.textPri)),
+                leading: Icon(
+                  Icons.refresh_rounded,
+                  color: _theme.textPri,
+                  size: 20,
+                ),
+                title: Text(
+                  'Reconectar agora',
+                  style: TextStyle(color: _theme.textPri),
+                ),
                 onTap: () async {
                   Navigator.pop(ctx);
                   final success = await _sshConnectionManager.reconnectNow();
@@ -2595,9 +2672,15 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
               ),
             ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.power_settings_new_rounded,
-                  color: _theme.textMuted, size: 20),
-              title: Text('Desconectar', style: TextStyle(color: _theme.textMuted)),
+              leading: Icon(
+                Icons.power_settings_new_rounded,
+                color: _theme.textMuted,
+                size: 20,
+              ),
+              title: Text(
+                'Desconectar',
+                style: TextStyle(color: _theme.textMuted),
+              ),
               onTap: () {
                 Navigator.pop(ctx);
                 _sshConnectionManager.disconnect();
@@ -2609,18 +2692,23 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
     );
   }
 
-
   @override
   Widget build(BuildContext context) {
     _updateActiveControllerListener();
     final isDarkTheme = ThemeProvider.of(context).themeType != ThemeType.light;
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: (isDarkTheme ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark).copyWith(
-        statusBarColor: _theme.bg,
-        statusBarIconBrightness: isDarkTheme ? Brightness.light : Brightness.dark,
-        systemNavigationBarColor: _theme.surface,
-        systemNavigationBarIconBrightness: isDarkTheme ? Brightness.light : Brightness.dark,
-      ),
+      value:
+          (isDarkTheme ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark)
+              .copyWith(
+                statusBarColor: _theme.bg,
+                statusBarIconBrightness: isDarkTheme
+                    ? Brightness.light
+                    : Brightness.dark,
+                systemNavigationBarColor: _theme.surface,
+                systemNavigationBarIconBrightness: isDarkTheme
+                    ? Brightness.light
+                    : Brightness.dark,
+              ),
       child: Scaffold(
         key: _scaffoldKey,
         backgroundColor: _theme.bg,
@@ -2738,7 +2826,9 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
                 });
               },
               // Mostra o chip SSH na status bar apenas com projeto remoto ativo
-              sshConnectionManager: _isRemoteProject ? _sshConnectionManager : null,
+              sshConnectionManager: _isRemoteProject
+                  ? _sshConnectionManager
+                  : null,
               onSshTap: _isRemoteProject
                   ? () => _showSshStatusSheet(context)
                   : null,
@@ -2767,7 +2857,8 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
         builder: (context) => IconButton(
           icon: Icon(Icons.menu, color: _theme.textMuted, size: 20),
           onPressed: () {
-            _activeFocusNode?.unfocus(); // #15 FIX: fecha teclado ao abrir drawer
+            _activeFocusNode
+                ?.unfocus(); // #15 FIX: fecha teclado ao abrir drawer
             Scaffold.of(context).openDrawer();
           },
         ),
@@ -2821,8 +2912,11 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
                   ),
                   if (_activePath != null)
                     Text(
-                      _projectPath != null && _activePath!.startsWith(_projectPath!)
-                          ? _activePath!.substring(_projectPath!.length).replaceFirst(RegExp(r'^[\/]'), '')
+                      _projectPath != null &&
+                              _activePath!.startsWith(_projectPath!)
+                          ? _activePath!
+                                .substring(_projectPath!.length)
+                                .replaceFirst(RegExp(r'^[\/]'), '')
                           : _activePath!,
                       style: TextStyle(
                         color: _theme.textMuted,
@@ -2840,7 +2934,9 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
       ),
       actions: [
         IconButton(
-          onPressed: _tabController.activeTabIndex != -1 ? _runActiveFile : null,
+          onPressed: _tabController.activeTabIndex != -1
+              ? _runActiveFile
+              : null,
           icon: Icon(
             Icons.play_arrow_rounded,
             size: 24,
@@ -2858,7 +2954,8 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
           icon: Icon(
             Icons.save_outlined,
             size: 20,
-            color: _tabController.activeTabIndex != -1 && _activeHasUnsavedChanges
+            color:
+                _tabController.activeTabIndex != -1 && _activeHasUnsavedChanges
                 ? _theme.accent
                 : _theme.textMuted,
           ),
@@ -2880,7 +2977,9 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
             icon: Icon(
               Icons.code_rounded,
               size: 20,
-              color: _gitBranch != null ? const Color(0xFFE07B1A) : _theme.textMuted,
+              color: _gitBranch != null
+                  ? const Color(0xFFE07B1A)
+                  : _theme.textMuted,
             ),
             tooltip: _gitBranch ?? 'Git',
           ),
@@ -2940,7 +3039,10 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
                   context: context,
                   builder: (ctx) => AlertDialog(
                     backgroundColor: _theme.surface,
-                    title: Text(AppLocalizations.of(context)!.exitConfirmTitle, style: TextStyle(color: _theme.textPri)),
+                    title: Text(
+                      AppLocalizations.of(context)!.exitConfirmTitle,
+                      style: TextStyle(color: _theme.textPri),
+                    ),
                     content: Text(
                       AppLocalizations.of(context)!.exitConfirmMessage,
                       style: TextStyle(color: _theme.textMuted),
@@ -2979,24 +3081,40 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
               // ── Editor
               _menuItem('zoom_in', l10n.increaseFont, Icons.zoom_in),
               _menuItem('zoom_out', l10n.decreaseFont, Icons.zoom_out),
-              _menuItem('format', l10n.formatCode, Icons.format_align_left_outlined),
+              _menuItem(
+                'format',
+                l10n.formatCode,
+                Icons.format_align_left_outlined,
+              ),
               _menuItem(
                 'autosave',
                 _autoSaveEnabled ? l10n.autoSaveOn : l10n.autoSaveOff,
-                _autoSaveEnabled ? Icons.toggle_on_outlined : Icons.toggle_off_outlined,
+                _autoSaveEnabled
+                    ? Icons.toggle_on_outlined
+                    : Icons.toggle_off_outlined,
               ),
               _menuItem(
                 'autoformat',
                 _autoFormatOnSave ? l10n.autoFormatOn : l10n.autoFormatOff,
-                _autoFormatOnSave ? Icons.align_horizontal_left : Icons.align_horizontal_left_outlined,
+                _autoFormatOnSave
+                    ? Icons.align_horizontal_left
+                    : Icons.align_horizontal_left_outlined,
               ),
               const PopupMenuDivider(),
               // ── IA
-              _menuItem('ai_settings', l10n.aiSettings, Icons.settings_outlined),
+              _menuItem(
+                'ai_settings',
+                l10n.aiSettings,
+                Icons.settings_outlined,
+              ),
               _menuItem(
                 'ghost',
-                _ghostSuggestionsEnabled ? l10n.ghostSuggestionsOn : l10n.ghostSuggestionsOff,
-                _ghostSuggestionsEnabled ? Icons.auto_awesome : Icons.auto_awesome_outlined,
+                _ghostSuggestionsEnabled
+                    ? l10n.ghostSuggestionsOn
+                    : l10n.ghostSuggestionsOff,
+                _ghostSuggestionsEnabled
+                    ? Icons.auto_awesome
+                    : Icons.auto_awesome_outlined,
               ),
               const PopupMenuDivider(),
               // ── Sessão
@@ -3084,7 +3202,10 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
               },
               child: Text(
                 AppLocalizations.of(context)!.saveAndClose,
-                style: TextStyle(color: _theme.accent, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  color: _theme.accent,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
           ],
@@ -3104,7 +3225,11 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
           backgroundColor: _theme.surface,
           title: Text(
             AppLocalizations.of(context)!.selectTheme,
-            style: TextStyle(color: _theme.textPri, fontSize: 16, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              color: _theme.textPri,
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+            ),
           ),
           content: SingleChildScrollView(
             child: Column(
@@ -3135,7 +3260,9 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
                         color: themeVariant.bg,
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
-                          color: isSelected ? themeVariant.accent : themeVariant.border,
+                          color: isSelected
+                              ? themeVariant.accent
+                              : themeVariant.border,
                           width: isSelected ? 2 : 1,
                         ),
                       ),
@@ -3155,7 +3282,9 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
                               label,
                               style: TextStyle(
                                 color: themeVariant.textPri,
-                                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                fontWeight: isSelected
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
                                 fontSize: 12,
                                 fontFamily: 'monospace',
                               ),
@@ -3169,7 +3298,10 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
                             decoration: BoxDecoration(
                               color: themeVariant.surface,
                               borderRadius: BorderRadius.circular(2),
-                              border: Border.all(color: themeVariant.border, width: 0.5),
+                              border: Border.all(
+                                color: themeVariant.border,
+                                width: 0.5,
+                              ),
                             ),
                           ),
                           Container(
@@ -3192,7 +3324,10 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: Text(AppLocalizations.of(context)!.close, style: TextStyle(color: _theme.textMuted)),
+              child: Text(
+                AppLocalizations.of(context)!.close,
+                style: TextStyle(color: _theme.textMuted),
+              ),
             ),
           ],
         );
@@ -3304,7 +3439,8 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
           final sel = ctrl.selection;
           final current = ctrl.text;
           final offset = sel.isValid ? sel.baseOffset : current.length;
-          final newText = current.substring(0, offset) + text + current.substring(offset);
+          final newText =
+              current.substring(0, offset) + text + current.substring(offset);
           ctrl.value = ctrl.value.copyWith(
             text: newText,
             selection: TextSelection.collapsed(offset: offset + text.length),
@@ -3315,9 +3451,11 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
   }
 
   void _showAISettingsDialog() {
-    showDialog(context: context, builder: (_) => AISettingsDialog(aiService: _aiService));
+    showDialog(
+      context: context,
+      builder: (_) => AISettingsDialog(aiService: _aiService),
+    );
   }
-
 
   void _showFindReplace() {
     setState(() => _isFindReplaceVisible = !_isFindReplaceVisible);
@@ -3334,7 +3472,10 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: _theme.surface,
-        title: Text('Ir para linha', style: TextStyle(color: _theme.textPri, fontSize: 15)),
+        title: Text(
+          'Ir para linha',
+          style: TextStyle(color: _theme.textPri, fontSize: 15),
+        ),
         content: TextField(
           controller: lineController,
           autofocus: true,
@@ -3415,12 +3556,15 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
     String newLine;
     if (trimmedLine.startsWith(commentPrefix)) {
       final commentStart = currentLine.indexOf(commentPrefix);
-      newLine = currentLine.substring(0, commentStart) + currentLine.substring(commentStart + commentPrefix.length);
+      newLine =
+          currentLine.substring(0, commentStart) +
+          currentLine.substring(commentStart + commentPrefix.length);
     } else {
       newLine = commentPrefix + currentLine;
     }
 
-    final newText = text.substring(0, lineStart) + newLine + text.substring(effectiveEnd);
+    final newText =
+        text.substring(0, lineStart) + newLine + text.substring(effectiveEnd);
     controller.value = controller.value.copyWith(
       text: newText,
       selection: TextSelection.collapsed(
@@ -3432,14 +3576,31 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
   String? _getCommentPrefix() {
     final lang = _tabController.languageName;
     switch (lang) {
-      case 'JS': case 'TS': case 'TSX': case 'ESM': case 'JSON':
-      case 'Dart': case 'Java': case 'Kotlin': case 'C++': case 'C':
-      case 'C/C++': case 'Go': case 'Rust': case 'Swift': case 'Scala':
-      case 'PHP': case 'C#': case 'Ruby':
+      case 'JS':
+      case 'TS':
+      case 'TSX':
+      case 'ESM':
+      case 'JSON':
+      case 'Dart':
+      case 'Java':
+      case 'Kotlin':
+      case 'C++':
+      case 'C':
+      case 'C/C++':
+      case 'Go':
+      case 'Rust':
+      case 'Swift':
+      case 'Scala':
+      case 'PHP':
+      case 'C#':
+      case 'Ruby':
         return '// ';
-      case 'Python': case 'YAML': case 'Bash':
+      case 'Python':
+      case 'YAML':
+      case 'Bash':
         return '# ';
-      case 'HTML': case 'Markdown':
+      case 'HTML':
+      case 'Markdown':
         return '<!-- ';
       case 'CSS':
         return '/* ';
@@ -3540,7 +3701,9 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
       CommandItem(
         label: 'Auto-save',
         shortcut: '',
-        icon: _autoSaveEnabled ? Icons.toggle_on_outlined : Icons.toggle_off_outlined,
+        icon: _autoSaveEnabled
+            ? Icons.toggle_on_outlined
+            : Icons.toggle_off_outlined,
         onTap: () => _toggleAutoSave(),
       ),
       CommandItem(
@@ -3596,12 +3759,9 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
       ),
     ];
 
-    CommandPalette.show(
-      context,
-      theme: _theme,
-      commands: commands,
-    );
+    CommandPalette.show(context, theme: _theme, commands: commands);
   }
+
   GitStatus? _gitStatus;
   String? _gitBranch;
 
@@ -3610,12 +3770,20 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
     try {
       final isRepo = await GitService.isGitRepo(_projectPath!);
       if (!isRepo) {
-        if (mounted) setState(() { _gitStatus = null; _gitBranch = null; });
+        if (mounted)
+          setState(() {
+            _gitStatus = null;
+            _gitBranch = null;
+          });
         return;
       }
       final status = await GitService.getStatus(_projectPath!);
       final branch = await GitService.getCurrentBranch(_projectPath!);
-      if (mounted) setState(() { _gitStatus = status; _gitBranch = branch; });
+      if (mounted)
+        setState(() {
+          _gitStatus = status;
+          _gitBranch = branch;
+        });
     } catch (e) {
       debugPrint('Git status error: ');
     }
@@ -3824,7 +3992,10 @@ class _GitPanelState extends State<_GitPanel> {
                 margin: const EdgeInsets.only(top: 8),
                 width: 40,
                 height: 4,
-                decoration: BoxDecoration(color: t.border, borderRadius: BorderRadius.circular(2)),
+                decoration: BoxDecoration(
+                  color: t.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
               Padding(
                 padding: const EdgeInsets.all(12),
@@ -3834,7 +4005,11 @@ class _GitPanelState extends State<_GitPanel> {
                     const SizedBox(width: 8),
                     Text(
                       'Git',
-                      style: TextStyle(color: t.textPri, fontWeight: FontWeight.bold, fontSize: 15),
+                      style: TextStyle(
+                        color: t.textPri,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
                     ),
                     const Spacer(),
                     IconButton(
@@ -3846,7 +4021,12 @@ class _GitPanelState extends State<_GitPanel> {
               ),
               Expanded(
                 child: _loading
-                    ? Center(child: CircularProgressIndicator(color: t.accent, strokeWidth: 2))
+                    ? Center(
+                        child: CircularProgressIndicator(
+                          color: t.accent,
+                          strokeWidth: 2,
+                        ),
+                      )
                     : DefaultTabController(
                         length: 2,
                         child: Column(
@@ -3862,10 +4042,7 @@ class _GitPanelState extends State<_GitPanel> {
                             ),
                             Expanded(
                               child: TabBarView(
-                                children: [
-                                  _buildFilesTab(t),
-                                  _buildLogTab(t),
-                                ],
+                                children: [_buildFilesTab(t), _buildLogTab(t)],
                               ),
                             ),
                           ],
@@ -3882,14 +4059,24 @@ class _GitPanelState extends State<_GitPanel> {
                     Expanded(
                       child: TextField(
                         controller: _commitMsgController,
-                        style: TextStyle(color: t.textPri, fontFamily: 'monospace', fontSize: 12),
+                        style: TextStyle(
+                          color: t.textPri,
+                          fontFamily: 'monospace',
+                          fontSize: 12,
+                        ),
                         decoration: InputDecoration(
                           hintText: 'Mensagem do commit...',
-                          hintStyle: TextStyle(color: t.textMuted, fontSize: 11),
+                          hintStyle: TextStyle(
+                            color: t.textMuted,
+                            fontSize: 11,
+                          ),
                           isDense: true,
                           filled: true,
                           fillColor: t.surface,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 8,
+                          ),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(6),
                             borderSide: BorderSide(color: t.border),
@@ -3907,14 +4094,27 @@ class _GitPanelState extends State<_GitPanel> {
                     ),
                     const SizedBox(width: 8),
                     ElevatedButton(
-                      onPressed: _commitMsgController.text.trim().isEmpty ? null : _doCommit,
+                      onPressed: _commitMsgController.text.trim().isEmpty
+                          ? null
+                          : _doCommit,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: t.accent,
                         foregroundColor: t.bg,
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 10,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(6),
+                        ),
                       ),
-                      child: const Text('Commit', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                      child: const Text(
+                        'Commit',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -3946,7 +4146,11 @@ class _GitPanelState extends State<_GitPanel> {
           leading: Icon(icon, color: color, size: 16),
           title: Text(
             f.path,
-            style: TextStyle(color: t.textPri, fontFamily: 'monospace', fontSize: 12),
+            style: TextStyle(
+              color: t.textPri,
+              fontFamily: 'monospace',
+              fontSize: 12,
+            ),
             overflow: TextOverflow.ellipsis,
           ),
           trailing: Row(
@@ -3960,16 +4164,30 @@ class _GitPanelState extends State<_GitPanel> {
                     widget.onRefresh();
                   },
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: t.accent.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(4),
                     ),
-                    child: Text('stage', style: TextStyle(color: t.accent, fontSize: 9, fontFamily: 'monospace')),
+                    child: Text(
+                      'stage',
+                      style: TextStyle(
+                        color: t.accent,
+                        fontSize: 9,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
                   ),
                 ),
               if (f.staged)
-                Icon(Icons.check_circle, color: const Color(0xFF50FA7B), size: 14),
+                Icon(
+                  Icons.check_circle,
+                  color: const Color(0xFF50FA7B),
+                  size: 14,
+                ),
             ],
           ),
         );
@@ -3980,7 +4198,10 @@ class _GitPanelState extends State<_GitPanel> {
   Widget _buildLogTab(JalideThemeVariant t) {
     if (_commits.isEmpty) {
       return Center(
-        child: Text('Nenhum commit', style: TextStyle(color: t.textMuted, fontSize: 13)),
+        child: Text(
+          'Nenhum commit',
+          style: TextStyle(color: t.textMuted, fontSize: 13),
+        ),
       );
     }
     return ListView.builder(
@@ -4006,7 +4227,11 @@ class _GitPanelState extends State<_GitPanel> {
           ),
           subtitle: Text(
             ' · ',
-            style: TextStyle(color: t.textMuted, fontSize: 10, fontFamily: 'monospace'),
+            style: TextStyle(
+              color: t.textMuted,
+              fontSize: 10,
+              fontFamily: 'monospace',
+            ),
           ),
         );
       },
@@ -4015,12 +4240,18 @@ class _GitPanelState extends State<_GitPanel> {
 
   (IconData, Color) _fileStatusIcon(String status, JalideThemeVariant t) {
     switch (status) {
-      case 'modified': return (Icons.edit, const Color(0xFFE0AF68));
-      case 'added': return (Icons.add_circle, const Color(0xFF50FA7B));
-      case 'deleted': return (Icons.remove_circle, const Color(0xFFF7768E));
-      case 'untracked': return (Icons.help_outline, t.textMuted);
-      case 'renamed': return (Icons.drive_file_rename_outline, const Color(0xFF7AA2F7));
-      default: return (Icons.circle_outlined, t.textMuted);
+      case 'modified':
+        return (Icons.edit, const Color(0xFFE0AF68));
+      case 'added':
+        return (Icons.add_circle, const Color(0xFF50FA7B));
+      case 'deleted':
+        return (Icons.remove_circle, const Color(0xFFF7768E));
+      case 'untracked':
+        return (Icons.help_outline, t.textMuted);
+      case 'renamed':
+        return (Icons.drive_file_rename_outline, const Color(0xFF7AA2F7));
+      default:
+        return (Icons.circle_outlined, t.textMuted);
     }
   }
 
@@ -4036,7 +4267,10 @@ class _GitPanelState extends State<_GitPanel> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Commit criado: ', style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+            content: Text(
+              'Commit criado: ',
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+            ),
             backgroundColor: widget.theme.surface,
             behavior: SnackBarBehavior.floating,
           ),
