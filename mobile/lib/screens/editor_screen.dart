@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
@@ -29,6 +29,7 @@ import '../services/ssh_connection_manager.dart';
 import '../services/ssh_foreground_service.dart';
 import '../services/ssh_host_key_service.dart';
 import '../services/ssh_session_state_service.dart';
+import '../services/git_service.dart';
 import '../theme/jalide_theme.dart';
 import '../controllers/editor_tab_controller.dart';
 import '../widgets/aux_keyboard.dart';
@@ -42,6 +43,19 @@ import '../widgets/ai_settings_dialog.dart';
 import '../utils/code_formatter.dart';
 import 'ssh_connect_screen.dart';
 import '../l10n/app_localizations.dart';
+import '../widgets/find_replace_bar.dart';
+import '../widgets/command_palette.dart';
+import 'package:highlight/languages/typescript.dart' as lang_ts;
+import 'package:highlight/languages/java.dart' as lang_java;
+import 'package:highlight/languages/go.dart' as lang_go;
+import 'package:highlight/languages/rust.dart' as lang_rust;
+import 'package:highlight/languages/kotlin.dart' as lang_kt;
+import 'package:highlight/languages/sql.dart' as lang_sql;
+import 'package:highlight/languages/yaml.dart' as lang_yaml;
+import 'package:highlight/languages/bash.dart' as lang_bash;
+import 'package:highlight/languages/ruby.dart' as lang_ruby;
+import 'package:highlight/languages/php.dart' as lang_php;
+import 'package:highlight/languages/cs.dart' as lang_cs;
 
 
 class EditorScreen extends StatefulWidget {
@@ -112,6 +126,13 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
   // BUG2 FIX: Um timer por path de aba para evitar race condition no auto-save
   final Map<String, Timer> _autoSaveTimers = {};
   bool _isFormatting = false; // Guard contra loop de auto-save durante formatação
+  int _lastLineCount = 1;
+  CodeController? _listenerController;
+
+  // Key para encontrar o ScrollPosition horizontal interno do CodeField
+  final GlobalKey _editorScrollKey = GlobalKey();
+  final ScrollController _horizontalScrollCtrl = ScrollController();
+  bool _isFindReplaceVisible = false;
 
   // Teclado auxiliar
   bool _ctrlActive = false;
@@ -127,6 +148,8 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
         'C (Copy)',
         'V (Paste)',
         'X (Cut)',
+        '↑ (MoveUp)',
+        '↓ (MoveDown)',
       ];
     }
     return [
@@ -141,9 +164,9 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
       '( )',
       '" "',
       "' '",
-      '; :',
-      '= >',
-      '=>',
+      '🔍',
+      '//',
+      '⊞',
     ];
   }
 
@@ -177,6 +200,7 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
     _sshConnectionManager.addListener(_onSshConnectionChanged);
     WidgetsBinding.instance.addObserver(this);
     _initializeAI();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadGitStatus());
     _initializeSshConnectionManager();
     // Escuta o botão "Desconectar" da notificação do Foreground Service
     SshForegroundService.addDataCallback(_onForegroundServiceData);
@@ -316,9 +340,63 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
       t.cancel();
     }
     _autoSaveTimers.clear();
+    _listenerController?.removeListener(_onControllerTextChanged);
     _tabController.disposeTabs();
     _tabController.dispose();
+    _horizontalScrollCtrl.dispose();
     super.dispose();
+  }
+
+  void _onControllerTextChanged() {
+    if (_activeController == null) return;
+    final text = _activeController!.text;
+    final sel = _activeController!.selection;
+    final lineCount = '\n'.allMatches(text).length + 1;
+    if (lineCount != _lastLineCount) {
+      _lastLineCount = lineCount;
+      if (mounted) {
+        setState(() {});
+      }
+    }
+    // Rola horizontal para inicio quando cursor esta no comeco de uma linha
+    if (sel.isCollapsed && sel.start > 0 && sel.start <= text.length && text[sel.start - 1] == '\n') {
+      _scrollHorizontalToStart();
+    } else if (sel.isCollapsed && sel.start == 0) {
+      _scrollHorizontalToStart();
+    }
+  }
+
+  void _updateActiveControllerListener() {
+    final currentController = _activeController;
+    if (_listenerController != currentController) {
+      _listenerController?.removeListener(_onControllerTextChanged);
+      _listenerController = currentController;
+      _listenerController?.addListener(_onControllerTextChanged);
+      if (currentController != null) {
+        _lastLineCount = '\n'.allMatches(currentController.text).length + 1;
+      }
+    }
+  }
+
+  double _calculateGutterWidth() {
+    if (_activeController == null) return 64.0;
+    final lineCount = _lastLineCount;
+    final digits = lineCount.toString().length;
+
+    // IMPORTANT: flutter_code_editor 0.3.5 ignores fontSize in GutterStyle.textStyle
+    // and always uses the editor's font size for line numbers.
+    // So we must base width on _fontSize, NOT the smaller gutter font size.
+    // Monospace char width ≈ 0.6 * fontSize
+    // Gutter total = lineNumber column + error column (16) + folding column (16) + margin
+    final charWidth = _fontSize * 0.6;
+    final lineNumberColumnWidth = digits * charWidth;
+
+    // 16 (errors) + 16 (folding) = 32px for icons, + 10px right margin
+    const iconColumnsWidth = 32.0;
+    const rightMargin = 10.0;
+    const leftPadding = 8.0; // CodeField has padding: left: 8
+
+    return lineNumberColumnWidth + iconColumnsWidth + rightMargin + leftPadding;
   }
 
   Future<void> _initializeAI() async {
@@ -521,6 +599,7 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
                 )
                 .toList();
           });
+          _loadGitStatus();
         }
       } catch (e) {
         _showToast('Erro ao listar pasta SAF: $e', type: _ToastType.error);
@@ -558,6 +637,7 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
               )
               .toList();
         });
+        _loadGitStatus();
       }
     } catch (e) {
       _showToast('Erro ao listar arquivos: $e', type: _ToastType.error);
@@ -586,6 +666,7 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
               )
               .toList();
         });
+        _loadGitStatus();
         // Persiste o caminho do projeto para retomada após reinício do app
         await SshSessionStateService.updateProjectPath(path);
       }
@@ -632,12 +713,23 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
 
     final languages = [
       {'name': 'JavaScript', 'highlight': javascript, 'displayName': 'JS'},
+      {'name': 'TypeScript', 'highlight': lang_ts.typescript, 'displayName': 'TS'},
       {'name': 'JSON', 'highlight': json, 'displayName': 'JSON'},
       {'name': 'Python', 'highlight': python, 'displayName': 'Python'},
       {'name': 'HTML', 'highlight': xml, 'displayName': 'HTML'},
       {'name': 'CSS', 'highlight': css, 'displayName': 'CSS'},
       {'name': 'Dart', 'highlight': dart, 'displayName': 'Dart'},
       {'name': 'C++', 'highlight': cpp, 'displayName': 'C++'},
+      {'name': 'Java', 'highlight': lang_java.java, 'displayName': 'Java'},
+      {'name': 'Go', 'highlight': lang_go.go, 'displayName': 'Go'},
+      {'name': 'Rust', 'highlight': lang_rust.rust, 'displayName': 'Rust'},
+      {'name': 'Kotlin', 'highlight': lang_kt.kotlin, 'displayName': 'Kotlin'},
+      {'name': 'Ruby', 'highlight': lang_ruby.ruby, 'displayName': 'Ruby'},
+      {'name': 'PHP', 'highlight': lang_php.php, 'displayName': 'PHP'},
+      {'name': 'C#', 'highlight': lang_cs.cs, 'displayName': 'C#'},
+      {'name': 'SQL', 'highlight': lang_sql.sql, 'displayName': 'SQL'},
+      {'name': 'YAML', 'highlight': lang_yaml.yaml, 'displayName': 'YAML'},
+      {'name': 'Bash', 'highlight': lang_bash.bash, 'displayName': 'Bash'},
       {'name': 'Markdown', 'highlight': markdown, 'displayName': 'Markdown'},
     ];
 
@@ -1092,6 +1184,15 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
     _showToast(_autoSaveEnabled ? 'Auto-Save ativado' : 'Auto-Save desativado');
   }
 
+  void _scrollHorizontalToStart() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_horizontalScrollCtrl.hasClients) {
+        try { _horizontalScrollCtrl.jumpTo(0); } catch (_) {}
+      }
+    });
+  }
+
   void _insertSnippet(String snippet) {
     if (_tabController.activeTabIndex == -1) return;
     _tabController.forceRecordActiveTabHistory();
@@ -1139,6 +1240,9 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
 
     _activeController!.selection = TextSelection.collapsed(offset: offset);
     _activeFocusNode!.requestFocus();
+    if (snippet == '\n') {
+      _scrollHorizontalToStart();
+    }
   }
 
   void _handleAuxKeyTap(String key) {
@@ -1263,10 +1367,22 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
       _cutSelection();
     } else if (key.startsWith('S')) {
       _saveFile();
+    } else if (key == '↑ (MoveUp)') {
+      _moveLineUp();
+    } else if (key == '↓ (MoveDown)') {
+      _moveLineDown();
     } else if (key.startsWith('D')) {
-      _duplicateLine();
+      _selectNextOrDuplicate();
     } else if (key.startsWith('F')) {
-      _formatCode();
+      _showFindReplace();
+    } else if (key.startsWith('H')) {
+      if (!_isFindReplaceVisible) {
+        setState(() => _isFindReplaceVisible = true);
+      }
+    } else if (key.startsWith('G')) {
+      _goToLine();
+    } else if (key == '/ (Comment)') {
+      _toggleComment();
     }
     _activeFocusNode!.requestFocus();
   }
@@ -1336,6 +1452,104 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
     }
   }
 
+  void _selectNextOrDuplicate() {
+    final controller = _activeController;
+    if (controller == null) return;
+    final text = controller.text;
+    final sel = controller.selection;
+
+    if (sel.isValid && !sel.isCollapsed) {
+      final selected = text.substring(sel.start, sel.end);
+      if (selected.isEmpty) return;
+      final fromPos = sel.end;
+      final idx = text.indexOf(selected, fromPos);
+      if (idx != -1) {
+        controller.selection = TextSelection(
+          baseOffset: sel.baseOffset,
+          extentOffset: idx + selected.length,
+        );
+      } else {
+        final wrapIdx = text.indexOf(selected, 0);
+        if (wrapIdx != -1 && wrapIdx != sel.start) {
+          controller.selection = TextSelection(
+            baseOffset: sel.baseOffset,
+            extentOffset: wrapIdx + selected.length,
+          );
+        } else {
+          _showToast('Nenhuma outra ocorrência encontrada');
+        }
+      }
+    } else {
+      _duplicateLine();
+    }
+  }
+
+  void _moveLineUp() {
+    final controller = _activeController;
+    if (controller == null) return;
+    _tabController.forceRecordActiveTabHistory();
+    final text = controller.text;
+    final sel = controller.selection;
+    if (!sel.isValid) return;
+
+    final before = text.substring(0, sel.start);
+    final lines = before.split('\n');
+    if (lines.length < 2) return;
+
+    final currentLineIdx = lines.length - 1;
+    final currentLine = lines[currentLineIdx];
+    final prevLine = lines[currentLineIdx - 1];
+
+    final lineStart = before.length - currentLine.length;
+    final prevLineStart = lineStart - prevLine.length - 1;
+
+    final newText = text.substring(0, prevLineStart) +
+        currentLine + '\n' + prevLine +
+        text.substring(lineStart + currentLine.length);
+
+    final offsetDiff = currentLine.length + 1;
+    controller.value = controller.value.copyWith(
+      text: newText,
+      selection: TextSelection.collapsed(
+        offset: (sel.start - offsetDiff).clamp(0, newText.length),
+      ),
+    );
+  }
+
+  void _moveLineDown() {
+    final controller = _activeController;
+    if (controller == null) return;
+    _tabController.forceRecordActiveTabHistory();
+    final text = controller.text;
+    final sel = controller.selection;
+    if (!sel.isValid) return;
+
+    final before = text.substring(0, sel.start);
+    final lines = before.split('\n');
+    final currentLineIdx = lines.length - 1;
+    final currentLine = lines[currentLineIdx];
+
+    final lineStart = before.length - currentLine.length;
+    final lineEnd = text.indexOf('\n', lineStart);
+    if (lineEnd == -1 || lineEnd >= text.length - 1) return;
+
+    final nextLineEnd = text.indexOf('\n', lineEnd + 1);
+    final end = nextLineEnd == -1 ? text.length : nextLineEnd;
+    final nextLine = text.substring(lineEnd + 1, end);
+
+    final newText = text.substring(0, lineStart) +
+        nextLine + '\n' + currentLine +
+        text.substring(end);
+
+    final offsetDiff = nextLine.length + 1;
+    controller.value = controller.value.copyWith(
+      text: newText,
+      selection: TextSelection.collapsed(
+        offset: (sel.start + offsetDiff).clamp(0, newText.length),
+      ),
+    );
+  }
+
   void _handleEditorKey(String key) {
     switch (key) {
       case 'Tab':
@@ -1373,6 +1587,15 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
         break;
       case 'ESC':
         _activeFocusNode!.unfocus();
+        return;
+      case '🔍':
+        _showFindReplace();
+        return;
+      case '//':
+        _toggleComment();
+        return;
+      case '⊞':
+        _showCommandPalette();
         return;
       default:
         _insertSnippet(key);
@@ -1532,12 +1755,44 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
     final lang = _tabController.languageName;
 
     try {
-      final formatted = CodeFormatter.format(text, lang);
+      var formatted = CodeFormatter.format(text, lang);
 
       if (formatted != text) {
         _tabController.forceRecordActiveTabHistory();
         final selection = controller.selection;
-        
+
+        // Detecta espaços trailing no cursor antes de formatar
+        String? trailingSpaces;
+        int? cursorLineIndex;
+        if (selection.isValid && selection.isCollapsed) {
+          int lineIdx = 0;
+          int col = 0;
+          for (int i = 0; i < selection.baseOffset; i++) {
+            if (text[i] == '\n') { lineIdx++; col = 0; } else { col++; }
+          }
+          final origLines = text.split('\n');
+          if (lineIdx < origLines.length) {
+            final origLine = origLines[lineIdx];
+            final trimmedRight = origLine.trimRight();
+            final trailingLen = origLine.length - trimmedRight.length;
+            if (col > trimmedRight.length && trailingLen > 0) {
+              // Cursor estava nos espaços trailing — preservar
+              final extraSpaces = col - trimmedRight.length;
+              trailingSpaces = ' ' * extraSpaces;
+              cursorLineIndex = lineIdx;
+            }
+          }
+        }
+
+        // Injeta os espaços trailing de volta na linha do cursor (se necessário)
+        if (trailingSpaces != null && cursorLineIndex != null) {
+          final fmtLines = formatted.split('\n');
+          if (cursorLineIndex < fmtLines.length) {
+            fmtLines[cursorLineIndex] = fmtLines[cursorLineIndex] + trailingSpaces;
+            formatted = fmtLines.join('\n');
+          }
+        }
+
         TextSelection newSelection;
         if (selection.isValid) {
           if (selection.isCollapsed) {
@@ -2357,6 +2612,7 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
 
   @override
   Widget build(BuildContext context) {
+    _updateActiveControllerListener();
     final isDarkTheme = ThemeProvider.of(context).themeType != ThemeType.light;
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: (isDarkTheme ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark).copyWith(
@@ -2411,6 +2667,12 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
                   _saveTabsPreference();
                 },
                 onCloseTab: _closeTab,
+              ),
+            if (_isFindReplaceVisible && _activeController != null)
+              FindReplaceBar(
+                editorController: _activeController!,
+                onClose: () => setState(() => _isFindReplaceVisible = false),
+                theme: _theme,
               ),
             Expanded(
               child: Stack(
@@ -2612,6 +2874,16 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
           icon: Icon(Icons.info_outline, size: 22, color: _theme.textMuted),
           tooltip: AppLocalizations.of(context)!.about,
         ),
+        if (_projectPath != null)
+          IconButton(
+            onPressed: _showGitPanel,
+            icon: Icon(
+              Icons.code_rounded,
+              size: 20,
+              color: _gitBranch != null ? const Color(0xFFE07B1A) : _theme.textMuted,
+            ),
+            tooltip: _gitBranch ?? 'Git',
+          ),
         IconButton(
           onPressed: _openAIPanel,
           icon: Icon(
@@ -3047,6 +3319,326 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
   }
 
 
+  void _showFindReplace() {
+    setState(() => _isFindReplaceVisible = !_isFindReplaceVisible);
+  }
+
+  void _goToLine() {
+    if (_activeController == null) return;
+    final controller = _activeController!;
+    final text = controller.text;
+    final lineCount = '\n'.allMatches(text).length + 1;
+    final lineController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: _theme.surface,
+        title: Text('Ir para linha', style: TextStyle(color: _theme.textPri, fontSize: 15)),
+        content: TextField(
+          controller: lineController,
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          style: TextStyle(color: _theme.textPri, fontFamily: 'monospace'),
+          decoration: InputDecoration(
+            hintText: '1-',
+            hintStyle: TextStyle(color: _theme.textMuted),
+            enabledBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: _theme.border),
+            ),
+            focusedBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: _theme.accent),
+            ),
+          ),
+          onSubmitted: (_) {
+            final num = int.tryParse(lineController.text);
+            if (num != null && num >= 1 && num <= lineCount) {
+              final lines = text.split('\n');
+              int offset = 0;
+              for (int i = 0; i < num - 1 && i < lines.length; i++) {
+                offset += lines[i].length + 1;
+              }
+              controller.selection = TextSelection.collapsed(offset: offset);
+              _activeFocusNode?.requestFocus();
+            }
+            Navigator.pop(ctx);
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Cancelar', style: TextStyle(color: _theme.textMuted)),
+          ),
+          TextButton(
+            onPressed: () {
+              final num = int.tryParse(lineController.text);
+              if (num != null && num >= 1 && num <= lineCount) {
+                final lines = text.split('\n');
+                int offset = 0;
+                for (int i = 0; i < num - 1 && i < lines.length; i++) {
+                  offset += lines[i].length + 1;
+                }
+                controller.selection = TextSelection.collapsed(offset: offset);
+                _activeFocusNode?.requestFocus();
+              }
+              Navigator.pop(ctx);
+            },
+            child: Text('Ir', style: TextStyle(color: _theme.accent)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _toggleComment() {
+    if (_activeController == null) return;
+    _tabController.forceRecordActiveTabHistory();
+    final controller = _activeController!;
+    final text = controller.text;
+    final sel = controller.selection;
+    if (!sel.isValid) return;
+
+    final commentPrefix = _getCommentPrefix();
+    if (commentPrefix == null) {
+      _showToast('Linguagem sem suporte a comentários');
+      return;
+    }
+
+    final lineStart = text.substring(0, sel.start).lastIndexOf('\n') + 1;
+    final lineEnd = sel.isCollapsed
+        ? text.indexOf('\n', sel.start)
+        : text.indexOf('\n', sel.extentOffset);
+    final effectiveEnd = lineEnd == -1 ? text.length : lineEnd;
+    final currentLine = text.substring(lineStart, effectiveEnd);
+    final trimmedLine = currentLine.trimLeft();
+
+    String newLine;
+    if (trimmedLine.startsWith(commentPrefix)) {
+      final commentStart = currentLine.indexOf(commentPrefix);
+      newLine = currentLine.substring(0, commentStart) + currentLine.substring(commentStart + commentPrefix.length);
+    } else {
+      newLine = commentPrefix + currentLine;
+    }
+
+    final newText = text.substring(0, lineStart) + newLine + text.substring(effectiveEnd);
+    controller.value = controller.value.copyWith(
+      text: newText,
+      selection: TextSelection.collapsed(
+        offset: sel.start + (newLine.length - currentLine.length),
+      ),
+    );
+  }
+
+  String? _getCommentPrefix() {
+    final lang = _tabController.languageName;
+    switch (lang) {
+      case 'JS': case 'TS': case 'TSX': case 'ESM': case 'JSON':
+      case 'Dart': case 'Java': case 'Kotlin': case 'C++': case 'C':
+      case 'C/C++': case 'Go': case 'Rust': case 'Swift': case 'Scala':
+      case 'PHP': case 'C#': case 'Ruby':
+        return '// ';
+      case 'Python': case 'YAML': case 'Bash':
+        return '# ';
+      case 'HTML': case 'Markdown':
+        return '<!-- ';
+      case 'CSS':
+        return '/* ';
+      case 'SQL':
+        return '-- ';
+      default:
+        return '// ';
+    }
+  }
+
+  void _showCommandPalette() {
+    final commands = [
+      CommandItem(
+        label: 'Novo arquivo',
+        shortcut: '',
+        icon: Icons.add_outlined,
+        onTap: () => _tabController.createNewTab(),
+      ),
+      CommandItem(
+        label: 'Salvar',
+        shortcut: 'Ctrl+S',
+        icon: Icons.save_outlined,
+        onTap: () => _saveFile(),
+      ),
+      CommandItem(
+        label: 'Salvar como',
+        shortcut: '',
+        icon: Icons.save_as_outlined,
+        onTap: () => _saveFileAs(),
+      ),
+      CommandItem(
+        label: 'Buscar e Substituir',
+        shortcut: 'Ctrl+F',
+        icon: Icons.search,
+        onTap: () => _showFindReplace(),
+      ),
+      CommandItem(
+        label: 'Ir para linha',
+        shortcut: 'Ctrl+G',
+        icon: Icons.tag,
+        onTap: () => _goToLine(),
+      ),
+      CommandItem(
+        label: 'Comentar linha',
+        shortcut: 'Ctrl+/',
+        icon: Icons.comment_outlined,
+        onTap: () => _toggleComment(),
+      ),
+      CommandItem(
+        label: 'Formatar código',
+        shortcut: 'Ctrl+Shift+F',
+        icon: Icons.format_align_left_outlined,
+        onTap: () => _formatCode(),
+      ),
+      CommandItem(
+        label: 'Rodar arquivo',
+        shortcut: '',
+        icon: Icons.play_arrow_rounded,
+        onTap: () => _runActiveFile(),
+      ),
+      CommandItem(
+        label: 'Duplicar linha',
+        shortcut: 'Ctrl+D',
+        icon: Icons.copy,
+        onTap: () => _duplicateLine(),
+      ),
+      CommandItem(
+        label: 'Selecionar tudo',
+        shortcut: 'Ctrl+A',
+        icon: Icons.select_all,
+        onTap: () {
+          if (_activeController != null) {
+            _activeController!.selection = TextSelection(
+              baseOffset: 0,
+              extentOffset: _activeController!.text.length,
+            );
+          }
+        },
+      ),
+      CommandItem(
+        label: 'Mudar tema',
+        shortcut: '',
+        icon: Icons.palette_outlined,
+        onTap: () => _showThemeDialog(),
+      ),
+      CommandItem(
+        label: 'Tamanho da fonte +',
+        shortcut: '',
+        icon: Icons.zoom_in,
+        onTap: () => _updateFontSize(_fontSize + 2),
+      ),
+      CommandItem(
+        label: 'Tamanho da fonte -',
+        shortcut: '',
+        icon: Icons.zoom_out,
+        onTap: () => _updateFontSize(_fontSize - 2),
+      ),
+      CommandItem(
+        label: 'Auto-save',
+        shortcut: '',
+        icon: _autoSaveEnabled ? Icons.toggle_on_outlined : Icons.toggle_off_outlined,
+        onTap: () => _toggleAutoSave(),
+      ),
+      CommandItem(
+        label: 'Terminal',
+        shortcut: '',
+        icon: Icons.terminal,
+        onTap: () {
+          setState(() {
+            _isTerminalVisible = !_isTerminalVisible;
+            if (_isTerminalVisible) _hasTerminalBeenOpened = true;
+          });
+        },
+      ),
+      CommandItem(
+        label: 'Sugestões IA',
+        shortcut: '',
+        icon: Icons.auto_awesome,
+        onTap: () => _toggleGhostSuggestions(),
+      ),
+      CommandItem(
+        label: 'Configurações IA',
+        shortcut: '',
+        icon: Icons.settings_outlined,
+        onTap: () => _showAISettingsDialog(),
+      ),
+      CommandItem(
+        label: 'Abrir pasta do projeto',
+        shortcut: '',
+        icon: Icons.folder_open_outlined,
+        onTap: () => _pickProjectFolder(),
+      ),
+      CommandItem(
+        label: 'SSH / Remoto',
+        shortcut: '',
+        icon: Icons.cloud_outlined,
+        onTap: () => _openSshScreen(),
+      ),
+      CommandItem(
+        label: 'Fechar aba',
+        shortcut: '',
+        icon: Icons.close_outlined,
+        onTap: () {
+          if (_tabController.activeTabIndex != -1) {
+            _closeTab(_tabController.activeTabIndex);
+          }
+        },
+      ),
+      CommandItem(
+        label: 'Sair',
+        shortcut: '',
+        icon: Icons.exit_to_app,
+        onTap: () => SystemNavigator.pop(),
+      ),
+    ];
+
+    CommandPalette.show(
+      context,
+      theme: _theme,
+      commands: commands,
+    );
+  }
+  GitStatus? _gitStatus;
+  String? _gitBranch;
+
+  Future<void> _loadGitStatus() async {
+    if (_projectPath == null) return;
+    try {
+      final isRepo = await GitService.isGitRepo(_projectPath!);
+      if (!isRepo) {
+        if (mounted) setState(() { _gitStatus = null; _gitBranch = null; });
+        return;
+      }
+      final status = await GitService.getStatus(_projectPath!);
+      final branch = await GitService.getCurrentBranch(_projectPath!);
+      if (mounted) setState(() { _gitStatus = status; _gitBranch = branch; });
+    } catch (e) {
+      debugPrint('Git status error: ');
+    }
+  }
+
+  void _showGitPanel() {
+    if (_projectPath == null) {
+      _showToast('Abra um projeto primeiro');
+      return;
+    }
+    _loadGitStatus();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _GitPanel(
+        projectPath: _projectPath!,
+        theme: _theme,
+        onRefresh: _loadGitStatus,
+      ),
+    );
+  }
+
   Widget _buildEditor() {
     if (_tabController.activeTabIndex == -1) {
       return Center(
@@ -3131,32 +3723,331 @@ class _EditorScreenState extends State<EditorScreen> with WidgetsBindingObserver
               'tag': TextStyle(color: _theme.kwColor),
             },
           ),
-          child: CodeField(
-            key: ValueKey(_tabController.activeTabIndex),
-            controller: _activeController!,
-            focusNode: _activeFocusNode!,
-            expands: true,
-            minLines: null,
-            maxLines: null,
-            wrap: false,
-            textStyle: TextStyle(
-              fontFamily: 'monospace',
-              fontSize: _fontSize,
-              height: 1.5,
-              color: _theme.textPri,
-            ),
-            cursorColor: _theme.accent,
-            gutterStyle: GutterStyle(
+          child: KeyedSubtree(
+            key: _editorScrollKey,
+            child: CodeField(
+              key: ValueKey(_tabController.activeTabIndex),
+              controller: _activeController!,
+              focusNode: _activeFocusNode!,
+              horizontalScrollController: _horizontalScrollCtrl,
+              expands: true,
+              minLines: null,
+              maxLines: null,
+              wrap: false,
               textStyle: TextStyle(
-                color: _theme.textMuted,
                 fontFamily: 'monospace',
-                fontSize: _fontSize - 3 > 8 ? _fontSize - 3 : 8,
+                fontSize: _fontSize,
+                height: 1.5,
+                color: _theme.textPri,
               ),
-              width: 40,
+              cursorColor: _theme.accent,
+              gutterStyle: GutterStyle(
+                textStyle: TextStyle(
+                  color: _theme.textMuted,
+                  fontFamily: 'monospace',
+                  fontSize: _fontSize - 3 > 8 ? _fontSize - 3 : 8,
+                ),
+                width: _calculateGutterWidth(),
+              ),
             ),
           ),
         ),
       ),
     );
+  }
+}
+
+class _GitPanel extends StatefulWidget {
+  final String projectPath;
+  final JalideThemeVariant theme;
+  final VoidCallback onRefresh;
+
+  const _GitPanel({
+    required this.projectPath,
+    required this.theme,
+    required this.onRefresh,
+  });
+
+  @override
+  State<_GitPanel> createState() => _GitPanelState();
+}
+
+class _GitPanelState extends State<_GitPanel> {
+  GitStatus? _status;
+  List<GitCommit> _commits = [];
+  String _branch = '';
+  bool _loading = true;
+  final _commitMsgController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    setState(() => _loading = true);
+    try {
+      final status = await GitService.getStatus(widget.projectPath);
+      final branch = await GitService.getCurrentBranch(widget.projectPath);
+      final commits = await GitService.getLog(widget.projectPath, limit: 15);
+      if (mounted) {
+        setState(() {
+          _status = status;
+          _branch = branch;
+          _commits = commits;
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = widget.theme;
+    return DraggableScrollableSheet(
+      initialChildSize: 0.6,
+      minChildSize: 0.3,
+      maxChildSize: 0.85,
+      builder: (ctx, scrollCtrl) {
+        return Container(
+          decoration: BoxDecoration(
+            color: t.bg,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+            border: Border(top: BorderSide(color: t.border)),
+          ),
+          child: Column(
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 8),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(color: t.border, borderRadius: BorderRadius.circular(2)),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    Icon(Icons.code_rounded, color: t.accent, size: 20),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Git',
+                      style: TextStyle(color: t.textPri, fontWeight: FontWeight.bold, fontSize: 15),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      icon: Icon(Icons.refresh, color: t.textMuted, size: 18),
+                      onPressed: _loadData,
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: _loading
+                    ? Center(child: CircularProgressIndicator(color: t.accent, strokeWidth: 2))
+                    : DefaultTabController(
+                        length: 2,
+                        child: Column(
+                          children: [
+                            TabBar(
+                              labelColor: t.accent,
+                              unselectedLabelColor: t.textMuted,
+                              indicatorColor: t.accent,
+                              tabs: const [
+                                Tab(text: 'Arquivos'),
+                                Tab(text: 'Histórico'),
+                              ],
+                            ),
+                            Expanded(
+                              child: TabBarView(
+                                children: [
+                                  _buildFilesTab(t),
+                                  _buildLogTab(t),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+              ),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  border: Border(top: BorderSide(color: t.border)),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _commitMsgController,
+                        style: TextStyle(color: t.textPri, fontFamily: 'monospace', fontSize: 12),
+                        decoration: InputDecoration(
+                          hintText: 'Mensagem do commit...',
+                          hintStyle: TextStyle(color: t.textMuted, fontSize: 11),
+                          isDense: true,
+                          filled: true,
+                          fillColor: t.surface,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(6),
+                            borderSide: BorderSide(color: t.border),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(6),
+                            borderSide: BorderSide(color: t.border),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(6),
+                            borderSide: BorderSide(color: t.accent),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: _commitMsgController.text.trim().isEmpty ? null : _doCommit,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: t.accent,
+                        foregroundColor: t.bg,
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                      ),
+                      child: const Text('Commit', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildFilesTab(JalideThemeVariant t) {
+    final files = _status?.files ?? [];
+    if (files.isEmpty) {
+      return Center(
+        child: Text(
+          'Nenhuma alteração',
+          style: TextStyle(color: t.textMuted, fontSize: 13),
+        ),
+      );
+    }
+    return ListView.builder(
+      itemCount: files.length,
+      itemBuilder: (ctx, i) {
+        final f = files[i];
+        final (icon, color) = _fileStatusIcon(f.status, t);
+        return ListTile(
+          dense: true,
+          leading: Icon(icon, color: color, size: 16),
+          title: Text(
+            f.path,
+            style: TextStyle(color: t.textPri, fontFamily: 'monospace', fontSize: 12),
+            overflow: TextOverflow.ellipsis,
+          ),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (!f.staged)
+                GestureDetector(
+                  onTap: () async {
+                    await GitService.add(widget.projectPath, filePath: f.path);
+                    _loadData();
+                    widget.onRefresh();
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: t.accent.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text('stage', style: TextStyle(color: t.accent, fontSize: 9, fontFamily: 'monospace')),
+                  ),
+                ),
+              if (f.staged)
+                Icon(Icons.check_circle, color: const Color(0xFF50FA7B), size: 14),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildLogTab(JalideThemeVariant t) {
+    if (_commits.isEmpty) {
+      return Center(
+        child: Text('Nenhum commit', style: TextStyle(color: t.textMuted, fontSize: 13)),
+      );
+    }
+    return ListView.builder(
+      itemCount: _commits.length,
+      itemBuilder: (ctx, i) {
+        final c = _commits[i];
+        return ListTile(
+          dense: true,
+          leading: Container(
+            width: 8,
+            height: 8,
+            margin: const EdgeInsets.only(top: 4),
+            decoration: BoxDecoration(
+              color: i == 0 ? t.accent : t.textMuted.withValues(alpha: 0.4),
+              shape: BoxShape.circle,
+            ),
+          ),
+          title: Text(
+            c.message,
+            style: TextStyle(color: t.textPri, fontSize: 12),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          subtitle: Text(
+            ' · ',
+            style: TextStyle(color: t.textMuted, fontSize: 10, fontFamily: 'monospace'),
+          ),
+        );
+      },
+    );
+  }
+
+  (IconData, Color) _fileStatusIcon(String status, JalideThemeVariant t) {
+    switch (status) {
+      case 'modified': return (Icons.edit, const Color(0xFFE0AF68));
+      case 'added': return (Icons.add_circle, const Color(0xFF50FA7B));
+      case 'deleted': return (Icons.remove_circle, const Color(0xFFF7768E));
+      case 'untracked': return (Icons.help_outline, t.textMuted);
+      case 'renamed': return (Icons.drive_file_rename_outline, const Color(0xFF7AA2F7));
+      default: return (Icons.circle_outlined, t.textMuted);
+    }
+  }
+
+  Future<void> _doCommit() async {
+    final msg = _commitMsgController.text.trim();
+    if (msg.isEmpty) return;
+    try {
+      await GitService.add(widget.projectPath);
+      await GitService.commit(widget.projectPath, msg);
+      _commitMsgController.clear();
+      _loadData();
+      widget.onRefresh();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Commit criado: ', style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+            backgroundColor: widget.theme.surface,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro: '), backgroundColor: Colors.redAccent),
+        );
+      }
+    }
   }
 }

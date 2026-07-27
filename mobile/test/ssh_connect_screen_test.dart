@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jalide/screens/ssh_connect_screen.dart';
 import 'package:jalide/services/ssh_service.dart';
+import 'package:jalide/services/ssh_connection_manager.dart';
 import 'package:jalide/theme/jalide_theme.dart';
 
 void main() {
   testWidgets('Mostra botão de testar conexão e status online/desconectar', (tester) async {
     final profileManager = SshProfileManager();
+    final connectionManager = SshConnectionManager(profileManager: profileManager);
     final offlineProfile = const SshProfile(
       id: 'offline',
       label: 'Servidor A',
@@ -33,6 +35,7 @@ void main() {
           notifier: ValueNotifier<ThemeType>(ThemeType.dark),
           child: SshConnectScreen(
             profileManager: profileManager,
+            connectionManager: connectionManager,
             currentSession: onlineSession,
             onConnected: (_) async {},
             onDisconnect: () async {},

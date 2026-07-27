@@ -131,7 +131,10 @@ class CodeFormatter {
       final k = currentColumnIndex - origLeadingSpaceCount;
       newColumnIndex = fmtLeadingSpaceCount + k;
     } else {
-      newColumnIndex = fmtLeadingSpaceCount + trimmedLength;
+      // O cursor estava nos espaços/caracteres após o conteúdo real (trailing).
+      // Preservamos quantas posições além do conteúdo real o cursor estava.
+      final trailingOffset = currentColumnIndex - (origLeadingSpaceCount + trimmedLength);
+      newColumnIndex = fmtLeadingSpaceCount + trimmedLength + trailingOffset;
     }
 
     int newOffset = 0;

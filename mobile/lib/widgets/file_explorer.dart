@@ -1,4 +1,4 @@
-import 'dart:io';
+﻿import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
@@ -58,6 +58,7 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
   String? _currentPath;
   String? _selectedPath;
   bool _isSelectedPathDir = true;
+  String _searchQuery = '';
   final Map<String, Future<List<Map<String, dynamic>>>> _expandedDirsCache = {};
 
   @override
@@ -814,6 +815,18 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
     return segments;
   }
 
+  List<Map<String, dynamic>> _filterFiles(List<Map<String, dynamic>> files) {
+    if (_searchQuery.isEmpty) return files;
+    final query = _searchQuery.toLowerCase();
+    final results = <Map<String, dynamic>>[];
+    for (final file in files) {
+      final name = (file['name'] as String? ?? '').toLowerCase();
+      if (name.contains(query)) {
+        results.add(file);
+      }
+    }
+    return results;
+  }
   @override
   Widget build(BuildContext context) {
     final theme = ThemeProvider.of(context).current;
@@ -944,12 +957,54 @@ class _FileExplorerDrawerState extends State<FileExplorerDrawer> {
             ),
           ),
 
+          if (widget.projectPath != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+              child: SizedBox(
+                height: 32,
+                child: TextField(
+                  onChanged: (v) => setState(() => _searchQuery = v),
+                  style: TextStyle(
+                    color: theme.textPri,
+                    fontFamily: 'monospace',
+                    fontSize: 12,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'Buscar arquivos...',
+                    hintStyle: TextStyle(color: theme.textMuted, fontSize: 11),
+                    prefixIcon: Icon(Icons.search, color: theme.textMuted, size: 16),
+                    isDense: true,
+                    filled: true,
+                    fillColor: theme.bg,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(6),
+                      borderSide: BorderSide(color: theme.border),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(6),
+                      borderSide: BorderSide(color: theme.border),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(6),
+                      borderSide: BorderSide(color: theme.accent),
+                    ),
+                    suffixIcon: _searchQuery.isNotEmpty
+                        ? GestureDetector(
+                            onTap: () => setState(() => _searchQuery = ''),
+                            child: Icon(Icons.close, color: theme.textMuted, size: 14),
+                          )
+                        : null,
+                  ),
+                ),
+              ),
+            ),
           Expanded(
             child: widget.projectPath == null
                 ? _buildEmptyState(theme)
                 : ListView(
                     padding: const EdgeInsets.symmetric(vertical: 8),
-                    children: widget.projectFiles
+                    children: _filterFiles(widget.projectFiles)
                         .map((item) => _buildExplorerNode(context, item))
                         .toList(),
                   ),

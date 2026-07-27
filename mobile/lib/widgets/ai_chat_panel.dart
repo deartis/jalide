@@ -1,10 +1,34 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import '../services/ai_service.dart';
 import '../theme/jalide_theme.dart';
 import 'ai_settings_dialog.dart';
+import 'package:highlight/highlight_core.dart';
+import 'package:highlight/languages/dart.dart' as lang_dart;
+import 'package:highlight/languages/javascript.dart' as lang_js;
+import 'package:highlight/languages/python.dart' as lang_py;
+import 'package:highlight/languages/cpp.dart' as lang_cpp;
+import 'package:highlight/languages/css.dart' as lang_css;
+import 'package:highlight/languages/xml.dart' as lang_xml;
+import 'package:highlight/languages/json.dart' as lang_json;
+import 'package:highlight/languages/kotlin.dart' as lang_kt;
+import 'package:highlight/languages/swift.dart' as lang_swift;
+import 'package:highlight/languages/typescript.dart' as lang_ts;
+import 'package:highlight/languages/go.dart' as lang_go;
+import 'package:highlight/languages/rust.dart' as lang_rust;
+import 'package:highlight/languages/java.dart' as lang_java;
+import 'package:highlight/languages/sql.dart' as lang_sql;
+import 'package:highlight/languages/yaml.dart' as lang_yaml;
+import 'package:highlight/languages/bash.dart' as lang_bash;
+import 'package:highlight/languages/shell.dart' as lang_shell;
+import 'package:highlight/languages/ruby.dart' as lang_ruby;
+import 'package:highlight/languages/php.dart' as lang_php;
+import 'package:highlight/languages/cs.dart' as lang_cs;
+import 'package:highlight/languages/scala.dart' as lang_scala;
+import 'package:highlight/languages/objectivec.dart' as lang_objc;
+
 
 // ─── Modelos de mensagem ─────────────────────────────────────────────────────
 
@@ -704,7 +728,34 @@ class _UserBubble extends StatelessWidget {
 }
 
 /// Bolha da IA — alinhada à esquerda, com Markdown e botões de ação.
-class _AIBubble extends StatelessWidget {
+bool _langsRegistered = false;
+void _registerLanguages() {
+  if (_langsRegistered) return;
+  _langsRegistered = true;
+  highlight.registerLanguage('dart', lang_dart.dart);
+  highlight.registerLanguage('javascript', lang_js.javascript);
+  highlight.registerLanguage('python', lang_py.python);
+  highlight.registerLanguage('cpp', lang_cpp.cpp);
+  highlight.registerLanguage('css', lang_css.css);
+  highlight.registerLanguage('xml', lang_xml.xml);
+  highlight.registerLanguage('json', lang_json.json);
+  highlight.registerLanguage('kotlin', lang_kt.kotlin);
+  highlight.registerLanguage('swift', lang_swift.swift);
+  highlight.registerLanguage('typescript', lang_ts.typescript);
+  highlight.registerLanguage('go', lang_go.go);
+  highlight.registerLanguage('rust', lang_rust.rust);
+  highlight.registerLanguage('java', lang_java.java);
+  highlight.registerLanguage('sql', lang_sql.sql);
+  highlight.registerLanguage('yaml', lang_yaml.yaml);
+  highlight.registerLanguage('bash', lang_bash.bash);
+  highlight.registerLanguage('shell', lang_shell.shell);
+  highlight.registerLanguage('ruby', lang_ruby.ruby);
+  highlight.registerLanguage('php', lang_php.php);
+  highlight.registerLanguage('csharp', lang_cs.cs);
+  highlight.registerLanguage('scala', lang_scala.scala);
+  highlight.registerLanguage('objectivec', lang_objc.objectivec);
+}
+ class _AIBubble extends StatelessWidget {
   final ChatMessage msg;
   final JalideThemeVariant theme;
 
@@ -750,8 +801,49 @@ class _AIBubble extends StatelessWidget {
   }
 
   Widget _buildMarkdown(BuildContext context) {
+    _registerLanguages();
+    final codeBlockRegex = RegExp(r'`(\w*)\n([\s\S]*?)`', multiLine: true);
+    final matches = codeBlockRegex.allMatches(msg.text).toList();
+
+    if (matches.isEmpty) {
+      return _buildMarkdownText(context, msg.text);
+    }
+
+    final List<Widget> children = [];
+    int lastEnd = 0;
+
+    for (final match in matches) {
+      if (match.start > lastEnd) {
+        final textBefore = msg.text.substring(lastEnd, match.start).trim();
+        if (textBefore.isNotEmpty) {
+          children.add(_buildMarkdownText(context, textBefore));
+        }
+      }
+
+      final lang = match.group(1) ?? '';
+      final code = match.group(2)?.trimRight() ?? '';
+      children.add(_buildHighlightedCode(code, lang));
+
+      lastEnd = match.end;
+    }
+
+    if (lastEnd < msg.text.length) {
+      final textAfter = msg.text.substring(lastEnd).trim();
+      if (textAfter.isNotEmpty) {
+        children.add(_buildMarkdownText(context, textAfter));
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: children,
+    );
+  }
+
+  Widget _buildMarkdownText(BuildContext context, String text) {
     return MarkdownBody(
-      data: msg.text,
+      data: text,
       selectable: true,
       styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
         p: TextStyle(color: theme.textPri, fontSize: 13, height: 1.5),
@@ -785,7 +877,81 @@ class _AIBubble extends StatelessWidget {
     );
   }
 
-  Widget _buildTypingIndicator() {
+  Widget _buildHighlightedCode(String code, String lang) {
+    final language = lang.isNotEmpty ? lang : null;
+    final result = language != null
+        ? highlight.parse(code, language: language)
+        : highlight.parse(code, autoDetection: true);
+
+    final spans = _buildSpans(result.nodes ?? [], theme);
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      decoration: BoxDecoration(
+        color: theme.bg,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: theme.border),
+      ),
+      padding: const EdgeInsets.all(12),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: RichText(
+          text: TextSpan(
+            style: TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 12,
+              height: 1.5,
+              color: theme.textPri,
+            ),
+            children: spans,
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<TextSpan> _buildSpans(List<Node> nodes, JalideThemeVariant t) {
+    final List<TextSpan> spans = [];
+    for (final node in nodes) {
+      if (node.value != null) {
+        spans.add(TextSpan(
+          text: node.value,
+          style: _colorForClass(node.className, t),
+        ));
+      }
+      if (node.children != null) {
+        spans.addAll(_buildSpans(node.children!, t));
+      }
+    }
+    return spans;
+  }
+
+  TextStyle? _colorForClass(String? className, JalideThemeVariant t) {
+    if (className == null) return null;
+    final cls = className.replaceFirst('hljs-', '');
+    switch (cls) {
+      case 'keyword': case 'built_in': case 'selector':
+        return TextStyle(color: t.kwColor);
+      case 'string': case 'template-variable':
+        return TextStyle(color: t.strColor);
+      case 'number': case 'literal':
+        return TextStyle(color: t.numColor);
+      case 'comment': case 'doctag':
+        return TextStyle(color: t.commentColor, fontStyle: FontStyle.italic);
+      case 'function': case 'title': case 'title.function_':
+        return TextStyle(color: t.fnColor);
+      case 'params': case 'variable': case 'attr': case 'attribute':
+        return TextStyle(color: t.varColor);
+      case 'tag': case 'type':
+        return TextStyle(color: t.kwColor);
+      case 'class':
+        return TextStyle(color: t.fnColor);
+      case 'regexp':
+        return TextStyle(color: t.strColor);
+      default:
+        return null;
+    }
+  }  Widget _buildTypingIndicator() {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -931,3 +1097,4 @@ class _DotState extends State<_Dot> with SingleTickerProviderStateMixin {
     );
   }
 }
+
