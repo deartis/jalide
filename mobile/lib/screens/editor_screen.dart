@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:file_picker/file_picker.dart';
@@ -56,6 +56,10 @@ import 'package:highlight/languages/bash.dart' as lang_bash;
 import 'package:highlight/languages/ruby.dart' as lang_ruby;
 import 'package:highlight/languages/php.dart' as lang_php;
 import 'package:highlight/languages/cs.dart' as lang_cs;
+import '../modules/module_manager.dart';
+import '../modules/module_context.dart';
+import '../modules/git_module.dart';
+import '../modules/snippets_module.dart';
 
 class EditorScreen extends StatefulWidget {
   const EditorScreen({super.key});
@@ -208,6 +212,7 @@ class _EditorScreenState extends State<EditorScreen>
     // Escuta o botão "Desconectar" da notificação do Foreground Service
     SshForegroundService.addDataCallback(_onForegroundServiceData);
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initModules();
       _loadPreferences();
       // #14 FIX: reseta _ctrlActive quando o foco do editor muda
       _activeFocusNode?.addListener(() {
@@ -216,6 +221,31 @@ class _EditorScreenState extends State<EditorScreen>
         }
       });
     });
+  }
+
+  final ModuleManager _moduleManager = ModuleManager();
+
+  void _initModules() {
+    _moduleManager.registerModule(GitModule());
+    _moduleManager.registerModule(SnippetsModule());
+
+    final ctx = ModuleContext(
+      tabController: _tabController,
+      getActiveController: () => _activeController,
+      getActivePath: () => _activePath,
+      getProjectPath: () => _projectPath,
+      getTheme: () => _theme,
+      getIsRemoteProject: () => _isRemoteProject,
+      getSshSession: () => _activeSshSession,
+      showToast: (msg, {type = 'info'}) => _showToast(msg),
+      setState: (fn) {
+        if (mounted) setState(fn);
+      },
+      openFile: (path) => _openFileFromExplorer(path),
+      saveCurrentFile: () => _saveFile(),
+    );
+
+    _moduleManager.initAll(ctx);
   }
 
   Future<void> _initializeSshConnectionManager() async {
@@ -357,6 +387,7 @@ class _EditorScreenState extends State<EditorScreen>
     _tabController.disposeTabs();
     _tabController.dispose();
     _horizontalScrollCtrl.dispose();
+    _moduleManager.disposeAll();
     super.dispose();
   }
 
@@ -2825,6 +2856,7 @@ class _EditorScreenState extends State<EditorScreen>
                   _showAuxKeyboard = !_showAuxKeyboard;
                 });
               },
+              extraItems: _moduleManager.allStatusBarItems,
               // Mostra o chip SSH na status bar apenas com projeto remoto ativo
               sshConnectionManager: _isRemoteProject
                   ? _sshConnectionManager
@@ -3758,6 +3790,16 @@ class _EditorScreenState extends State<EditorScreen>
         onTap: () => SystemNavigator.pop(),
       ),
     ];
+
+    final moduleCmds = _moduleManager.allCommands.map((mc) {
+      return CommandItem(
+        label: mc.label,
+        shortcut: '',
+        icon: mc.icon ?? Icons.extension_rounded,
+        onTap: mc.onTap,
+      );
+    }).toList();
+    commands.addAll(moduleCmds);
 
     CommandPalette.show(context, theme: _theme, commands: commands);
   }

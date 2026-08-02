@@ -15,6 +15,8 @@ class StatusBar extends StatelessWidget {
   final SshConnectionManager? sshConnectionManager;
   final VoidCallback? onSshTap;
 
+  final List<Widget> extraItems;
+
   const StatusBar({
     super.key,
     required this.languageName,
@@ -25,6 +27,7 @@ class StatusBar extends StatelessWidget {
     this.onLanguageTap,
     this.sshConnectionManager,
     this.onSshTap,
+    this.extraItems = const [],
   });
 
   @override
@@ -66,6 +69,10 @@ class StatusBar extends StatelessWidget {
               child: _sbChip(theme, '⌨ Teclado', isMuted: !isAuxKeyboardVisible),
             ),
           ),
+          ...extraItems.map((w) => Padding(
+                padding: const EdgeInsets.only(left: 12),
+                child: Center(child: w),
+              )),
           const Spacer(),
           // Indicador SSH discreto — só aparece quando há sessão ativa
           if (sshConnectionManager != null)

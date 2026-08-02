@@ -16,6 +16,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/editor_tab.dart';
 import '../utils/code_completion.dart';
 import '../utils/file_utils.dart';
+import '../utils/jalide_code_controller.dart';
 
 class EditorTabController extends ChangeNotifier {
   final List<EditorTab> _openTabs = [];
@@ -199,20 +200,34 @@ class EditorTabController extends ChangeNotifier {
     Mode? language,
     EditorTab tab,
   ) {
-    final controller = CodeController(
+    final basePatterns = <String, TextStyle>{
+      r'[\{\}]': const TextStyle(
+        color: Color(0xFFFF9E3B),
+        fontWeight: FontWeight.bold,
+      ),
+      r'[\(\)]': const TextStyle(
+        color: Color(0xFF7AA2F7),
+        fontWeight: FontWeight.bold,
+      ),
+      r'[\[\]]': const TextStyle(
+        color: Color(0xFFBB9AF7),
+        fontWeight: FontWeight.bold,
+      ),
+      r'\bTODO\b': const TextStyle(
+        color: Color(0xFFE07B1A),
+        fontWeight: FontWeight.bold,
+      ),
+      r'\bFIXME\b': const TextStyle(
+        color: Color(0xFFFF6B6B),
+        fontWeight: FontWeight.bold,
+      ),
+      r'\bHACK\b': const TextStyle(color: Color(0xFFFFD580)),
+    };
+
+    final controller = JalideCodeController(
       text: text,
       language: language,
-      patternMap: {
-        r'\bTODO\b': const TextStyle(
-          color: Color(0xFFE07B1A),
-          fontWeight: FontWeight.bold,
-        ),
-        r'\bFIXME\b': const TextStyle(
-          color: Color(0xFFFF6B6B),
-          fontWeight: FontWeight.bold,
-        ),
-        r'\bHACK\b': const TextStyle(color: Color(0xFFFFD580)),
-      },
+      patternMap: Map.from(basePatterns),
     );
 
     final langName = getLanguageDisplayName(language);
