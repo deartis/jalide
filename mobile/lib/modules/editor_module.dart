@@ -19,6 +19,9 @@ abstract class EditorModule {
   String get id;
   String get name;
 
+  /// Descrição curta exibida no gerenciador de plugins
+  String get description => '';
+
   /// Inicializa o módulo quando a IDE abre
   void init(ModuleContext ctx);
 
@@ -39,4 +42,30 @@ abstract class EditorModule {
 
   /// Painel ou modal customizado fornecido pelo módulo
   Widget? buildPanel(BuildContext context) => null;
+
+  // ─── Event Hooks ──────────────────────────────────────────────────────────
+
+  /// Chamado após salvar um arquivo com sucesso
+  void onFileSaved(String? path) {}
+
+  /// Chamado ao abrir um arquivo no editor
+  void onFileOpened(String? path) {}
+
+  /// Chamado quando um projeto local/remoto é carregado
+  void onProjectOpened(String? path) {}
+
+  /// Chamado quando o projeto atual é fechado
+  void onProjectClosed() {}
+
+  /// Chamado quando o texto do editor ativo muda
+  void onEditorContentChanged(String text) {}
+
+  /// Chamado quando o cursor do editor se move
+  void onCursorMoved(int offset) {}
+
+  /// Chamado quando o terminal é aberto/fechado pelo usuário
+  void onTerminalToggled(bool visible) {}
+
+  /// Chamado após um auto-save bem-sucedido
+  void onAutoSaved(String? path) {}
 }

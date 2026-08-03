@@ -45,6 +45,7 @@ import 'ssh_connect_screen.dart';
 import '../l10n/app_localizations.dart';
 import '../widgets/find_replace_bar.dart';
 import '../widgets/command_palette.dart';
+import '../widgets/code_indentation_guides.dart';
 import 'package:highlight/languages/typescript.dart' as lang_ts;
 import 'package:highlight/languages/java.dart' as lang_java;
 import 'package:highlight/languages/go.dart' as lang_go;
@@ -60,6 +61,9 @@ import '../modules/module_manager.dart';
 import '../modules/module_context.dart';
 import '../modules/git_module.dart';
 import '../modules/snippets_module.dart';
+import '../modules/word_count_module.dart';
+import '../modules/formatter_module.dart';
+import 'plugin_manager_screen.dart';
 
 class EditorScreen extends StatefulWidget {
   const EditorScreen({super.key});
@@ -228,6 +232,8 @@ class _EditorScreenState extends State<EditorScreen>
   void _initModules() {
     _moduleManager.registerModule(GitModule());
     _moduleManager.registerModule(SnippetsModule());
+    _moduleManager.registerModule(WordCountModule());
+    _moduleManager.registerModule(FormatterModule());
 
     final ctx = ModuleContext(
       tabController: _tabController,
@@ -243,9 +249,10 @@ class _EditorScreenState extends State<EditorScreen>
       },
       openFile: (path) => _openFileFromExplorer(path),
       saveCurrentFile: () => _saveFile(),
+      formatCode: () async => _formatCode(),
     );
 
-    _moduleManager.initAll(ctx);
+    _moduleManager.loadState().then((_) => _moduleManager.initAll(ctx));
   }
 
   Future<void> _initializeSshConnectionManager() async {
@@ -395,6 +402,8 @@ class _EditorScreenState extends State<EditorScreen>
     if (_activeController == null) return;
     final text = _activeController!.text;
     final sel = _activeController!.selection;
+    _moduleManager.onEditorContentChanged(text);
+    _moduleManager.onCursorMoved(sel.baseOffset);
     final lineCount = '\n'.allMatches(text).length + 1;
     if (lineCount != _lastLineCount) {
       _lastLineCount = lineCount;
@@ -662,6 +671,7 @@ class _EditorScreenState extends State<EditorScreen>
                 .toList();
           });
           _loadGitStatus();
+          _moduleManager.onProjectOpened(path);
         }
       } catch (e) {
         _showToast('Erro ao listar pasta SAF: $e', type: _ToastType.error);
@@ -700,6 +710,7 @@ class _EditorScreenState extends State<EditorScreen>
               .toList();
         });
         _loadGitStatus();
+        _moduleManager.onProjectOpened(path);
       }
     } catch (e) {
       _showToast('Erro ao listar arquivos: $e', type: _ToastType.error);
@@ -729,6 +740,7 @@ class _EditorScreenState extends State<EditorScreen>
               .toList();
         });
         _loadGitStatus();
+        _moduleManager.onProjectOpened(path);
         // Persiste o caminho do projeto para retomada após reinício do app
         await SshSessionStateService.updateProjectPath(path);
       }
@@ -992,6 +1004,7 @@ class _EditorScreenState extends State<EditorScreen>
         content = await FileService.readFile(path);
       }
       _addTab(path, content, isRemote: _isRemoteProject);
+      _moduleManager.onFileOpened(path);
 
       // Fecha o drawer usando a chave global do Scaffold
       _scaffoldKey.currentState?.closeDrawer();
@@ -1046,6 +1059,7 @@ class _EditorScreenState extends State<EditorScreen>
       await future;
       if (!mounted) return;
       _tabController.markTabSaved(_tabController.activeTabIndex);
+      _moduleManager.onFileSaved(_activePath);
       _showToast('Salvo com sucesso', type: _ToastType.success);
     } catch (e) {
       _showToast('Erro ao salvar: $e', type: _ToastType.error);
@@ -1191,6 +1205,7 @@ class _EditorScreenState extends State<EditorScreen>
           await future;
           if (!mounted) return;
           _tabController.markTabSaved(currentIndex);
+          _moduleManager.onAutoSaved(path);
         } catch (e) {
           debugPrint('Auto-save error: $e');
         } finally {
@@ -1233,6 +1248,7 @@ class _EditorScreenState extends State<EditorScreen>
         final currentTabIndex = _tabController.openTabs.indexOf(tab);
         if (currentTabIndex != -1) {
           _tabController.markTabSaved(currentTabIndex);
+          _moduleManager.onAutoSaved(path);
         }
       } catch (e) {
         debugPrint('Instant save error: $e');
@@ -1456,6 +1472,11 @@ class _EditorScreenState extends State<EditorScreen>
       _goToLine();
     } else if (key == '/ (Comment)') {
       _toggleComment();
+    } else {
+      // Atalhos registrados por módulos (ex: 'Ctrl+K') são tentados quando a
+      // tecla não corresponde a nenhum atalho built-in
+      final base = key.split(' ').first;
+      _moduleManager.handleShortcut('Ctrl+$base');
     }
     _activeFocusNode!.requestFocus();
   }
@@ -2871,6 +2892,7 @@ class _EditorScreenState extends State<EditorScreen>
                     _hasTerminalBeenOpened = true;
                   }
                 });
+                _moduleManager.onTerminalToggled(_isTerminalVisible);
               },
               onLanguageTap: _showLanguageSelector,
             ),
@@ -3024,6 +3046,7 @@ class _EditorScreenState extends State<EditorScreen>
           ),
           tooltip: AppLocalizations.of(context)!.aiAssistant,
         ),
+        ..._moduleManager.allAppBarActions,
         PopupMenuButton<String>(
           color: _theme.surface,
           shape: RoundedRectangleBorder(
@@ -3049,6 +3072,9 @@ class _EditorScreenState extends State<EditorScreen>
                 break;
               case 'ssh':
                 _openSshScreen();
+                break;
+              case 'plugins':
+                _showPluginManager();
                 break;
               case 'autosave':
                 _toggleAutoSave();
@@ -3152,6 +3178,7 @@ class _EditorScreenState extends State<EditorScreen>
               // ── Sessão
               _menuItem('ssh', l10n.sshRemote, Icons.cloud_outlined),
               _menuItem('theme', l10n.changeTheme, Icons.palette_outlined),
+              _menuItem('plugins', 'Plugins', Icons.extension_rounded),
               const PopupMenuDivider(),
               _menuItem('exit', l10n.exitApp, Icons.exit_to_app),
             ];
@@ -3649,134 +3676,28 @@ class _EditorScreenState extends State<EditorScreen>
         label: 'Novo arquivo',
         shortcut: '',
         icon: Icons.add_outlined,
+        category: 'Arquivo',
         onTap: () => _tabController.createNewTab(),
       ),
       CommandItem(
         label: 'Salvar',
         shortcut: 'Ctrl+S',
         icon: Icons.save_outlined,
+        category: 'Arquivo',
         onTap: () => _saveFile(),
       ),
       CommandItem(
         label: 'Salvar como',
         shortcut: '',
         icon: Icons.save_as_outlined,
+        category: 'Arquivo',
         onTap: () => _saveFileAs(),
-      ),
-      CommandItem(
-        label: 'Buscar e Substituir',
-        shortcut: 'Ctrl+F',
-        icon: Icons.search,
-        onTap: () => _showFindReplace(),
-      ),
-      CommandItem(
-        label: 'Ir para linha',
-        shortcut: 'Ctrl+G',
-        icon: Icons.tag,
-        onTap: () => _goToLine(),
-      ),
-      CommandItem(
-        label: 'Comentar linha',
-        shortcut: 'Ctrl+/',
-        icon: Icons.comment_outlined,
-        onTap: () => _toggleComment(),
-      ),
-      CommandItem(
-        label: 'Formatar código',
-        shortcut: 'Ctrl+Shift+F',
-        icon: Icons.format_align_left_outlined,
-        onTap: () => _formatCode(),
-      ),
-      CommandItem(
-        label: 'Rodar arquivo',
-        shortcut: '',
-        icon: Icons.play_arrow_rounded,
-        onTap: () => _runActiveFile(),
-      ),
-      CommandItem(
-        label: 'Duplicar linha',
-        shortcut: 'Ctrl+D',
-        icon: Icons.copy,
-        onTap: () => _duplicateLine(),
-      ),
-      CommandItem(
-        label: 'Selecionar tudo',
-        shortcut: 'Ctrl+A',
-        icon: Icons.select_all,
-        onTap: () {
-          if (_activeController != null) {
-            _activeController!.selection = TextSelection(
-              baseOffset: 0,
-              extentOffset: _activeController!.text.length,
-            );
-          }
-        },
-      ),
-      CommandItem(
-        label: 'Mudar tema',
-        shortcut: '',
-        icon: Icons.palette_outlined,
-        onTap: () => _showThemeDialog(),
-      ),
-      CommandItem(
-        label: 'Tamanho da fonte +',
-        shortcut: '',
-        icon: Icons.zoom_in,
-        onTap: () => _updateFontSize(_fontSize + 2),
-      ),
-      CommandItem(
-        label: 'Tamanho da fonte -',
-        shortcut: '',
-        icon: Icons.zoom_out,
-        onTap: () => _updateFontSize(_fontSize - 2),
-      ),
-      CommandItem(
-        label: 'Auto-save',
-        shortcut: '',
-        icon: _autoSaveEnabled
-            ? Icons.toggle_on_outlined
-            : Icons.toggle_off_outlined,
-        onTap: () => _toggleAutoSave(),
-      ),
-      CommandItem(
-        label: 'Terminal',
-        shortcut: '',
-        icon: Icons.terminal,
-        onTap: () {
-          setState(() {
-            _isTerminalVisible = !_isTerminalVisible;
-            if (_isTerminalVisible) _hasTerminalBeenOpened = true;
-          });
-        },
-      ),
-      CommandItem(
-        label: 'Sugestões IA',
-        shortcut: '',
-        icon: Icons.auto_awesome,
-        onTap: () => _toggleGhostSuggestions(),
-      ),
-      CommandItem(
-        label: 'Configurações IA',
-        shortcut: '',
-        icon: Icons.settings_outlined,
-        onTap: () => _showAISettingsDialog(),
-      ),
-      CommandItem(
-        label: 'Abrir pasta do projeto',
-        shortcut: '',
-        icon: Icons.folder_open_outlined,
-        onTap: () => _pickProjectFolder(),
-      ),
-      CommandItem(
-        label: 'SSH / Remoto',
-        shortcut: '',
-        icon: Icons.cloud_outlined,
-        onTap: () => _openSshScreen(),
       ),
       CommandItem(
         label: 'Fechar aba',
         shortcut: '',
         icon: Icons.close_outlined,
+        category: 'Arquivo',
         onTap: () {
           if (_tabController.activeTabIndex != -1) {
             _closeTab(_tabController.activeTabIndex);
@@ -3787,7 +3708,142 @@ class _EditorScreenState extends State<EditorScreen>
         label: 'Sair',
         shortcut: '',
         icon: Icons.exit_to_app,
+        category: 'Arquivo',
         onTap: () => SystemNavigator.pop(),
+      ),
+      CommandItem(
+        label: 'Buscar e Substituir',
+        shortcut: 'Ctrl+F',
+        icon: Icons.search,
+        category: 'Editar',
+        onTap: () => _showFindReplace(),
+      ),
+      CommandItem(
+        label: 'Duplicar linha',
+        shortcut: 'Ctrl+D',
+        icon: Icons.copy,
+        category: 'Editar',
+        onTap: () => _duplicateLine(),
+      ),
+      CommandItem(
+        label: 'Selecionar tudo',
+        shortcut: 'Ctrl+A',
+        icon: Icons.select_all,
+        category: 'Editar',
+        onTap: () {
+          if (_activeController != null) {
+            _activeController!.selection = TextSelection(
+              baseOffset: 0,
+              extentOffset: _activeController!.text.length,
+            );
+          }
+        },
+      ),
+      CommandItem(
+        label: 'Comentar linha',
+        shortcut: 'Ctrl+/',
+        icon: Icons.comment_outlined,
+        category: 'Editar',
+        onTap: () => _toggleComment(),
+      ),
+      CommandItem(
+        label: 'Ir para linha',
+        shortcut: 'Ctrl+G',
+        icon: Icons.tag,
+        category: 'Editor',
+        onTap: () => _goToLine(),
+      ),
+      CommandItem(
+        label: 'Formatar código',
+        shortcut: 'Ctrl+Shift+F',
+        icon: Icons.format_align_left_outlined,
+        category: 'Editor',
+        onTap: () => _formatCode(),
+      ),
+      CommandItem(
+        label: 'Tamanho da fonte +',
+        shortcut: '',
+        icon: Icons.zoom_in,
+        category: 'Editor',
+        onTap: () => _updateFontSize(_fontSize + 2),
+      ),
+      CommandItem(
+        label: 'Tamanho da fonte -',
+        shortcut: '',
+        icon: Icons.zoom_out,
+        category: 'Editor',
+        onTap: () => _updateFontSize(_fontSize - 2),
+      ),
+      CommandItem(
+        label: 'Auto-save',
+        shortcut: '',
+        icon: _autoSaveEnabled
+            ? Icons.toggle_on_outlined
+            : Icons.toggle_off_outlined,
+        category: 'Editor',
+        onTap: () => _toggleAutoSave(),
+      ),
+      CommandItem(
+        label: 'Rodar arquivo',
+        shortcut: '',
+        icon: Icons.play_arrow_rounded,
+        category: 'Execução',
+        onTap: () => _runActiveFile(),
+      ),
+      CommandItem(
+        label: 'Terminal',
+        shortcut: '',
+        icon: Icons.terminal,
+        category: 'Execução',
+        onTap: () {
+          setState(() {
+            _isTerminalVisible = !_isTerminalVisible;
+            if (_isTerminalVisible) _hasTerminalBeenOpened = true;
+          });
+          _moduleManager.onTerminalToggled(_isTerminalVisible);
+        },
+      ),
+      CommandItem(
+        label: 'Sugestões IA',
+        shortcut: '',
+        icon: Icons.auto_awesome,
+        category: 'IA',
+        onTap: () => _toggleGhostSuggestions(),
+      ),
+      CommandItem(
+        label: 'Configurações IA',
+        shortcut: '',
+        icon: Icons.settings_outlined,
+        category: 'IA',
+        onTap: () => _showAISettingsDialog(),
+      ),
+      CommandItem(
+        label: 'Abrir pasta do projeto',
+        shortcut: '',
+        icon: Icons.folder_open_outlined,
+        category: 'Projeto',
+        onTap: () => _pickProjectFolder(),
+      ),
+      CommandItem(
+        label: 'SSH / Remoto',
+        shortcut: '',
+        icon: Icons.cloud_outlined,
+        category: 'Sessão',
+        onTap: () => _openSshScreen(),
+      ),
+      CommandItem(
+        label: 'Mudar tema',
+        shortcut: '',
+        icon: Icons.palette_outlined,
+        category: 'Sessão',
+        onTap: () => _showThemeDialog(),
+      ),
+      CommandItem(
+        label: 'Plugins',
+        shortcut: '',
+        icon: Icons.extension_rounded,
+        category: 'Sessão',
+        onTap: () => _showPluginManager(),
       ),
     ];
 
@@ -3797,11 +3853,23 @@ class _EditorScreenState extends State<EditorScreen>
         shortcut: '',
         icon: mc.icon ?? Icons.extension_rounded,
         onTap: mc.onTap,
+        category: mc.category,
       );
     }).toList();
     commands.addAll(moduleCmds);
 
     CommandPalette.show(context, theme: _theme, commands: commands);
+  }
+
+  Future<void> _showPluginManager() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PluginManagerScreen(manager: _moduleManager),
+      ),
+    );
+    // Reconstrói a tela para refletir módulos habilitados/desabilitados
+    if (mounted) setState(() {});
   }
 
   GitStatus? _gitStatus;
@@ -3933,31 +4001,44 @@ class _EditorScreenState extends State<EditorScreen>
               'tag': TextStyle(color: _theme.kwColor),
             },
           ),
-          child: KeyedSubtree(
-            key: _editorScrollKey,
-            child: CodeField(
-              key: ValueKey(_tabController.activeTabIndex),
-              controller: _activeController!,
-              focusNode: _activeFocusNode!,
-              horizontalScrollController: _horizontalScrollCtrl,
-              expands: true,
-              minLines: null,
-              maxLines: null,
-              wrap: false,
-              textStyle: TextStyle(
-                fontFamily: 'monospace',
-                fontSize: _fontSize,
-                height: 1.5,
-                color: _theme.textPri,
-              ),
-              cursorColor: _theme.accent,
-              gutterStyle: GutterStyle(
+          child: CodeIndentationGuides(
+            controller: _activeController!,
+            horizontalScrollController: _horizontalScrollCtrl,
+            gutterOffset: 8 + _calculateGutterWidth(),
+            textStyle: TextStyle(
+              fontFamily: 'monospace',
+              fontSize: _fontSize,
+              height: 1.5,
+              color: _theme.textPri,
+            ),
+            guideColor: _theme.textMuted.withValues(alpha: 0.22),
+            activeGuideColor: _theme.accent.withValues(alpha: 0.55),
+            child: KeyedSubtree(
+              key: _editorScrollKey,
+              child: CodeField(
+                key: ValueKey(_tabController.activeTabIndex),
+                controller: _activeController!,
+                focusNode: _activeFocusNode!,
+                horizontalScrollController: _horizontalScrollCtrl,
+                expands: true,
+                minLines: null,
+                maxLines: null,
+                wrap: false,
                 textStyle: TextStyle(
-                  color: _theme.textMuted,
                   fontFamily: 'monospace',
-                  fontSize: _fontSize - 3 > 8 ? _fontSize - 3 : 8,
+                  fontSize: _fontSize,
+                  height: 1.5,
+                  color: _theme.textPri,
                 ),
-                width: _calculateGutterWidth(),
+                cursorColor: _theme.accent,
+                gutterStyle: GutterStyle(
+                  textStyle: TextStyle(
+                    color: _theme.textMuted,
+                    fontFamily: 'monospace',
+                    fontSize: _fontSize - 3 > 8 ? _fontSize - 3 : 8,
+                  ),
+                  width: _calculateGutterWidth(),
+                ),
               ),
             ),
           ),

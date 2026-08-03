@@ -6,13 +6,22 @@ class CommandItem {
   final String shortcut;
   final IconData icon;
   final VoidCallback onTap;
+  final String? category;
 
   const CommandItem({
     required this.label,
     required this.shortcut,
     required this.icon,
     required this.onTap,
+    this.category,
   });
+}
+
+class _CommandGroup {
+  final String title;
+  final List<CommandItem> items;
+
+  const _CommandGroup(this.title, this.items);
 }
 
 class CommandPalette extends StatefulWidget {
@@ -45,12 +54,12 @@ class CommandPalette extends StatefulWidget {
 class _CommandPaletteState extends State<CommandPalette> {
   final TextEditingController _controller = TextEditingController();
   final FocusNode _focusNode = FocusNode();
-  List<CommandItem> _filtered = [];
+  List<_CommandGroup> _groups = [];
 
   @override
   void initState() {
     super.initState();
-    _filtered = widget.commands;
+    _groups = _buildGroups(widget.commands);
     WidgetsBinding.instance.addPostFrameCallback((_) => _focusNode.requestFocus());
   }
 
@@ -61,16 +70,47 @@ class _CommandPaletteState extends State<CommandPalette> {
     super.dispose();
   }
 
+  static List<_CommandGroup> _buildGroups(List<CommandItem> commands) {
+    final groups = <String, List<CommandItem>>{};
+    final order = <String>[];
+    for (final cmd in commands) {
+      final cat = cmd.category ?? 'Geral';
+      if (!groups.containsKey(cat)) {
+        groups[cat] = [];
+        order.add(cat);
+      }
+      groups[cat]!.add(cmd);
+    }
+    return [for (final cat in order) _CommandGroup(cat, groups[cat]!)];
+  }
+
   void _onSearch(String query) {
     setState(() {
       if (query.isEmpty) {
-        _filtered = widget.commands;
+        _groups = _buildGroups(widget.commands);
       } else {
-        _filtered = widget.commands
-            .where((c) => c.label.toLowerCase().contains(query.toLowerCase()))
-            .toList();
+        final q = query.toLowerCase();
+        _groups = _buildGroups(widget.commands
+            .where((c) => c.label.toLowerCase().contains(q))
+            .toList());
       }
     });
+  }
+
+  int get _totalRows =>
+      _groups.fold(0, (sum, g) => sum + 1 + g.items.length);
+
+  Object? _rowAt(int index) {
+    var cursor = 0;
+    for (final group in _groups) {
+      if (index == cursor) return group.title;
+      cursor++;
+      if (index < cursor + group.items.length) {
+        return group.items[index - cursor];
+      }
+      cursor += group.items.length;
+    }
+    return null;
   }
 
   @override
@@ -145,7 +185,7 @@ class _CommandPaletteState extends State<CommandPalette> {
                       ),
                     ),
                     Expanded(
-                      child: _filtered.isEmpty
+                      child: _groups.isEmpty
                           ? Center(
                               child: Text(
                                 'Nenhum comando encontrado',
@@ -158,10 +198,31 @@ class _CommandPaletteState extends State<CommandPalette> {
                             )
                           : ListView.builder(
                               controller: scrollController,
-                              itemCount: _filtered.length,
+                              itemCount: _totalRows,
                               padding: const EdgeInsets.symmetric(vertical: 4),
                               itemBuilder: (context, index) {
-                                final cmd = _filtered[index];
+                                final entry = _rowAt(index);
+                                if (entry is String) {
+                                  return Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      16,
+                                      10,
+                                      16,
+                                      4,
+                                    ),
+                                    child: Text(
+                                      entry,
+                                      style: TextStyle(
+                                        color: theme.accent,
+                                        fontFamily: 'monospace',
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 1.2,
+                                      ),
+                                    ),
+                                  );
+                                }
+                                final cmd = entry as CommandItem;
                                 return InkWell(
                                   onTap: () {
                                     Navigator.of(context).pop();
@@ -174,7 +235,8 @@ class _CommandPaletteState extends State<CommandPalette> {
                                     ),
                                     child: Row(
                                       children: [
-                                        Icon(cmd.icon, size: 18, color: theme.accent),
+                                        Icon(cmd.icon,
+                                            size: 18, color: theme.accent),
                                         const SizedBox(width: 12),
                                         Expanded(
                                           child: Text(
@@ -194,8 +256,10 @@ class _CommandPaletteState extends State<CommandPalette> {
                                             ),
                                             decoration: BoxDecoration(
                                               color: theme.surface,
-                                              borderRadius: BorderRadius.circular(4),
-                                              border: Border.all(color: theme.border),
+                                              borderRadius:
+                                                  BorderRadius.circular(4),
+                                              border: Border.all(
+                                                  color: theme.border),
                                             ),
                                             child: Text(
                                               cmd.shortcut,

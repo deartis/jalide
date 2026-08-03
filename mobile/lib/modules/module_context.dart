@@ -16,6 +16,7 @@ class ModuleContext {
   final void Function(VoidCallback fn) setState;
   final void Function(String path) openFile;
   final Future<void> Function() saveCurrentFile;
+  final Future<void> Function()? formatCode;
 
   ModuleContext({
     required this.tabController,
@@ -29,6 +30,7 @@ class ModuleContext {
     required this.setState,
     required this.openFile,
     required this.saveCurrentFile,
+    this.formatCode,
   });
 
   CodeController? get activeController => getActiveController();
