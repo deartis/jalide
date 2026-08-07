@@ -15,9 +15,19 @@
 
 ---
 
+## 📥 Download
+
+**Versão Atual: v1.0.3**
+
+[⬇️ **Baixar JALIDE v1.0.3.apk**](https://github.com/deartis/jalide/releases/download/v1.0.3/jalide_v1.0.3.apk)
+
+Para ver todas as versões e detalhes das funcionalidades, visite a página de [Releases](https://github.com/deartis/jalide/releases).
+
+---
+
 ## Sobre
 
-JALIDE é uma IDE móvel moderna e poderosa desenvolvida em Flutter, com suporte **multi-linguagem** (JavaScript, Python, Dart, C, C++ e Shell Script). Ela foi projetada para transformar seu Android em um ambiente de desenvolvimento robusto, ideal para quando você está em trânsito ou tem apenas o celular à mão — sem abrir mão de produtividade e recursos avançados.
+JALIDE é uma IDE móvel moderna e poderosa desenvolvida em Flutter, com suporte **multi-linguagem** (JavaScript, Python, Dart, C, C++ e Shell Script). Ela foi projetada para transformar seu Android em uma estação de desenvolvimento completa.
 
 📖 **Consulte a [Documentação de Funcionalidades](docs/funcionalidades.md) para saber mais sobre a arquitetura técnica e detalhes de uso.**
 
@@ -49,17 +59,17 @@ JALIDE é uma IDE móvel moderna e poderosa desenvolvida em Flutter, com suporte
 ## 🎯 O que há de novo (v1.1.0) - Julho de 2026
 
 ### 🧹 Formatação Inteligente & Cursor Inteligente
-- **Preservação de Foco do Cursor** — O cursor e as seleções ativas no editor agora acompanham as mudanças de recuo e formatação de código (`CodeFormatter.getFormattedOffset`), sem saltar de linha ou perder o foco do código.
+- **Preservação de Foco do Cursor** — O cursor e as seleções ativas no editor agora acompanham as mudanças de recuo e formatação de código (`CodeFormatter.getFormattedOffset`), sem saltar para fora da vista.
 
 ### 📱 Estabilidade com Termux Background
-- **Auto-Wake do sshd** — O app agora acorda o Termux e garante que o daemon `sshd` está ativo em qualquer tentativa de conexão local, prevenindo falhas de conexão caso o Android encerre processos em background.
+- **Auto-Wake do sshd** — O app agora acorda o Termux e garante que o daemon `sshd` está ativo em qualquer tentativa de conexão local, prevenindo falhas de conexão caso o Android encerre processos de background.
 
 ### 📂 Painel de Arquivos Refinado
-- **Seleção e Criação no Diretório Raiz** — O cabeçalho do projeto no topo do Drawer lateral agora serve para limpar seleções internas e focar na raiz (com realce de destaque ativo). Além disso, a pasta de destino é indicada no diálogo de criação (`Em: raiz`, etc.).
+- **Seleção e Criação no Diretório Raiz** — O cabeçalho do projeto no topo do Drawer lateral agora serve para limpar seleções internas e focar na raiz (com realce de destaque ativo). Também corrigido bug de criação de arquivos quando nenhuma pasta está selecionada.
 - **Ações Rápidas no Long-press** — Criação de arquivos e pastas disponível diretamente no menu contextual ao segurar qualquer pasta.
 
 ### 🔐 Botão "Sair" e Parada de Serviço Autônoma
-- **Notificação Otimizada** — O botão "Desconectar" na notificação funciona independentemente do isolate principal estar ativo. Adicionado também o botão **Sair** para matar o processo por completo instantaneamente.
+- **Notificação Otimizada** — O botão "Desconectar" na notificação funciona independentemente do isolate principal estar ativo. Adicionado também o botão **Sair** para matar o processo por completo (libera recursos do Termux).
 
 ---
 
@@ -77,9 +87,9 @@ JALIDE é uma IDE móvel moderna e poderosa desenvolvida em Flutter, com suporte
 ## 🎯 Na versão anterior (v0.1.0+6)
 
 ### 📂 Árvore de Diretórios Estilo VS Code
-- **Expansão In-place com Seta na Esquerda** — Pastas do explorador agora contam com setinhas de expansão no lado esquerdo. Você pode clicar e expandir estruturas profundas sem sair da raiz atual do projeto.
-- **Cache Anti-Crash (Sem Conflito SSH)** — Implementado cache inteligente de leitura de pastas. Isso evita loops de carregamento redundantes no Drawer durante a digitação e elimina travamentos (ANRs) em conexões SSH remotas.
-- **Destaque e Criação de Arquivos Contextual** — O arquivo ou pasta selecionada é destacado visualmente. A criação de novos arquivos/pastas resolve automaticamente para o diretório pai do arquivo selecionado.
+- **Expansão In-place com Seta na Esquerda** — Pastas do explorador agora contam com setinhas de expansão no lado esquerdo. Você pode clicar e expandir estruturas profundas sem sair da raiz automaticamente.
+- **Cache Anti-Crash (Sem Conflito SSH)** — Implementado cache inteligente de leitura de pastas. Isso evita loops de carregamento redundantes no Drawer durante a digitação e elimina travamentos.
+- **Destaque e Criação de Arquivos Contextual** — O arquivo ou pasta selecionada é destacado visualmente. A criação de novos arquivos/pastas resolve automaticamente para o diretório pai do arquivo ativo.
 - **Opção de Navegar Raiz** — Pressione e segure qualquer pasta (long-press) e selecione "Navegar" para redefinir aquela pasta como a raiz atual do explorador.
 
 ### 🤖 Integração com IA (Google Gemma)
@@ -92,7 +102,7 @@ JALIDE é uma IDE móvel moderna e poderosa desenvolvida em Flutter, com suporte
 - **Auto-Format on Save** — Opção para formatar o código magicamente toda vez que você salvar.
 
 ### 📱 Experiência Mobile Melhorada
-- **Seleção de Texto Inteligente** — Corrigido o comportamento do toque; agora toques curtos apenas movem o cursor, evitando menus de seleção indesejados. Segure o dedo para ativar a seleção de texto.
+- **Seleção de Texto Inteligente** — Corrigido o comportamento do toque; agora toques curtos apenas movem o cursor, evitando menus de seleção indesejados. Segure o dedo para ativar a seleção com precisão cirúrgica.
 
 ---
 
