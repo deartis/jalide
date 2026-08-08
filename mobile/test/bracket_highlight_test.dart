@@ -31,11 +31,9 @@ void main() {
   }
 
   TextStyle? styleAt(String text, int index, TextSpan? span) {
-    var acc = 0;
     for (final (offset, chunk, style) in flatten(span)) {
       final end = offset + chunk.length;
       if (index >= offset && index < end) return style;
-      acc = end;
     }
     return null;
   }
