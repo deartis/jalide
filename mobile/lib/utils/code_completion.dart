@@ -1,16 +1,17 @@
 import 'package:flutter_code_editor/flutter_code_editor.dart';
 
+/// Configura as palavras de autocompletar para o [CodeController].
 void applyLanguageSuggestions(CodeController controller, String languageName) {
-  final words = _completionWordsFor(languageName);
+  final words = completionWordsFor(languageName);
   controller.autocompleter.setCustomWords(words);
 }
 
-List<String> _completionWordsFor(String languageName) {
+List<String> completionWordsFor(String languageName) {
   switch (languageName) {
     case 'JS':
     case 'TS':
     case 'TSX':
-      return [
+      return const [
         'console',
         'log',
         'warn',
@@ -75,7 +76,7 @@ List<String> _completionWordsFor(String languageName) {
         'includes',
       ];
     case 'Dart':
-      return [
+      return const [
         'void',
         'String',
         'int',
@@ -143,7 +144,7 @@ List<String> _completionWordsFor(String languageName) {
         'context',
       ];
     case 'Python':
-      return [
+      return const [
         'print',
         'input',
         'len',
@@ -191,7 +192,7 @@ List<String> _completionWordsFor(String languageName) {
         'super',
       ];
     case 'JSON':
-      return [
+      return const [
         'name',
         'version',
         'description',
@@ -212,7 +213,7 @@ List<String> _completionWordsFor(String languageName) {
         'bugs',
       ];
     case 'HTML':
-      return [
+      return const [
         'div',
         'span',
         'p',
@@ -249,7 +250,7 @@ List<String> _completionWordsFor(String languageName) {
         'nav',
       ];
     case 'CSS':
-      return [
+      return const [
         'color',
         'background',
         'background-color',
@@ -285,7 +286,7 @@ List<String> _completionWordsFor(String languageName) {
     case 'C++':
     case 'C':
     case 'C/C++':
-      return [
+      return const [
         'include',
         'iostream',
         'stdio',
@@ -315,7 +316,7 @@ List<String> _completionWordsFor(String languageName) {
         'typename',
       ];
     case 'Markdown':
-      return [
+      return const [
         'NOTE',
         'TIP',
         'WARNING',

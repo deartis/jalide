@@ -116,25 +116,33 @@ class CodeFormatter {
 
     final trimmedOrig = origLine.trimLeft();
     final origLeadingSpaceCount = origLine.length - trimmedOrig.length;
+    // Usa o conteúdo real da linha original (sem leading e trailing)
+    // para determinar onde termina o conteúdo "real" na original.
     final trimmedOrigFully = trimmedOrig.trimRight();
     final trimmedLength = trimmedOrigFully.length;
 
     final trimmedFmt = fmtLine.trimLeft();
     final fmtLeadingSpaceCount = fmtLine.length - trimmedFmt.length;
+    // Comprimento do conteúdo real da linha formatada (sem trailing spaces).
+    // O formatter faz line.trim(), então fmtLine não tem trailing normalmente,
+    // mas calculamos assim para garantir corretude.
+    final fmtContentLength = fmtLine.trimRight().length - fmtLeadingSpaceCount;
 
     int newColumnIndex;
     if (currentColumnIndex == 0) {
       newColumnIndex = 0;
     } else if (currentColumnIndex <= origLeadingSpaceCount) {
+      // Cursor estava no recuo inicial — vai para o início do recuo formatado.
       newColumnIndex = fmtLeadingSpaceCount;
     } else if (currentColumnIndex <= origLeadingSpaceCount + trimmedLength) {
+      // Cursor está dentro do conteúdo real da linha.
       final k = currentColumnIndex - origLeadingSpaceCount;
-      newColumnIndex = fmtLeadingSpaceCount + k;
+      // Clamp para não ultrapassar o conteúdo real da linha formatada.
+      newColumnIndex = fmtLeadingSpaceCount + k.clamp(0, fmtContentLength);
     } else {
-      // O cursor estava nos espaços/caracteres após o conteúdo real (trailing).
-      // Preservamos quantas posições além do conteúdo real o cursor estava.
-      final trailingOffset = currentColumnIndex - (origLeadingSpaceCount + trimmedLength);
-      newColumnIndex = fmtLeadingSpaceCount + trimmedLength + trailingOffset;
+      // O cursor estava além do conteúdo real (trailing spaces).
+      // Posiciona no final do conteúdo real da linha formatada.
+      newColumnIndex = fmtLeadingSpaceCount + fmtContentLength;
     }
 
     int newOffset = 0;

@@ -1,4 +1,4 @@
-﻿name: jalide
+name: jalide
 description: "IDE Mobile Multilinguagem."
 publish_to: "none"
 version: 0.1.0+5
@@ -14,9 +14,9 @@ dependencies:
   flutter_localizations:
     sdk: flutter
   intl: ^0.20.2
-  flutter_code_editor: ^0.3.5
-  highlight: ^0.7.0
   path: ^1.9.0
+  highlight: ^0.7.0
+  flutter_code_editor: ^0.3.5
   path_provider: ^2.1.5
   permission_handler: ^12.0.3
   provider: ^6.1.2

@@ -70,9 +70,13 @@ class _GhostSuggestionBarState extends State<GhostSuggestionBar>
     // Cancela o debounce anterior
     _debounce?.cancel();
 
-    // Limpa a sugestão ao digitar
+    // Limpa a sugestão imediatamente ao digitar
     if (_suggestion.isNotEmpty) {
-      _clearSuggestion();
+      if (mounted) {
+        setState(() {
+          _suggestion = '';
+        });
+      }
     }
 
     // Aguarda 1.2s de pausa para disparar a IA

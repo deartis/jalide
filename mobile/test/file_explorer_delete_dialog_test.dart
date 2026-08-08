@@ -48,7 +48,7 @@ void main() {
 
     expect(find.text('Confirmar exclusão'), findsOneWidget);
 
-    await tester.enterText(find.byType(TextField), 'teste.txt');
+    await tester.enterText(find.byType(TextField).last, 'teste.txt');
     await tester.pump();
 
     await tester.tap(find.text('Excluir'));

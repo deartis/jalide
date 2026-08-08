@@ -15,6 +15,8 @@ class StatusBar extends StatelessWidget {
   final SshConnectionManager? sshConnectionManager;
   final VoidCallback? onSshTap;
 
+  final List<Widget> extraItems;
+
   const StatusBar({
     super.key,
     required this.languageName,
@@ -25,61 +27,77 @@ class StatusBar extends StatelessWidget {
     this.onLanguageTap,
     this.sshConnectionManager,
     this.onSshTap,
+    this.extraItems = const [],
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = ThemeProvider.of(context).current;
     return Container(
+      width: double.infinity,
       color: theme.accent,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
-      child: Row(
-        children: [
-          ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 40),
-            child: GestureDetector(
-              onTap: onTerminalToggle,
-              behavior: HitTestBehavior.opaque,
-              child: _sbChip(theme, '⬡ Terminal'),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 40),
+              child: GestureDetector(
+                onTap: onTerminalToggle,
+                behavior: HitTestBehavior.opaque,
+                child: _sbChip(theme, '⬡ Terminal'),
+              ),
             ),
-          ),
-          const SizedBox(width: 12),
-          ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 40),
-            child: GestureDetector(
-              onTap: onLanguageTap,
-              behavior: HitTestBehavior.opaque,
-              child: _sbChip(theme, languageName),
+            const SizedBox(width: 12),
+            ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 40),
+              child: GestureDetector(
+                onTap: onLanguageTap,
+                behavior: HitTestBehavior.opaque,
+                child: _sbChip(theme, languageName),
+              ),
             ),
-          ),
-          const SizedBox(width: 12),
-          ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 40),
-            child: _sbChip(theme, 'UTF-8'),
-          ),
-          const SizedBox(width: 12),
-          ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 40),
-            child: GestureDetector(
-              onTap: onAuxKeyboardToggle,
-              behavior: HitTestBehavior.opaque,
-              child: _sbChip(theme, '⌨ Teclado', isMuted: !isAuxKeyboardVisible),
+            const SizedBox(width: 12),
+            //ConstrainedBox(
+            //constraints: const BoxConstraints(minHeight: 40),
+            //child: _sbChip(theme, 'UTF-8'),
+            //),
+            const SizedBox(width: 12),
+            ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 40),
+              child: GestureDetector(
+                onTap: onAuxKeyboardToggle,
+                behavior: HitTestBehavior.opaque,
+                child: _sbChip(theme, ' ⌨ ', isMuted: !isAuxKeyboardVisible),
+              ),
             ),
-          ),
-          const Spacer(),
-          // Indicador SSH discreto — só aparece quando há sessão ativa
-          if (sshConnectionManager != null)
-            _SshStatusChip(
-              manager: sshConnectionManager!,
-              theme: theme,
-              onTap: onSshTap,
+            ...extraItems.map(
+              (w) => Padding(
+                padding: const EdgeInsets.only(left: 12),
+                child: Center(child: w),
+              ),
             ),
-        ],
+            // Indicador SSH discreto — só aparece quando há sessão ativa
+            if (sshConnectionManager != null) ...[
+              const SizedBox(width: 12),
+              _SshStatusChip(
+                manager: sshConnectionManager!,
+                theme: theme,
+                onTap: onSshTap,
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
 
-  Widget _sbChip(JalideThemeVariant theme, String text, {bool isMuted = false}) => Align(
+  Widget _sbChip(
+    JalideThemeVariant theme,
+    String text, {
+    bool isMuted = false,
+  }) => Align(
     alignment: Alignment.center,
     child: Text(
       text,
@@ -110,16 +128,26 @@ class _SshStatusChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return StreamBuilder<SshConnectionState>(
       stream: manager.connectionStateStream,
-      initialData: manager.currentSession?.state ?? SshConnectionState.disconnected,
+      initialData:
+          manager.currentSession?.state ?? SshConnectionState.disconnected,
       builder: (context, snapshot) {
         final state = snapshot.data ?? SshConnectionState.disconnected;
         final label = manager.currentSession?.profile.label ?? 'SSH';
 
         final (color, icon) = switch (state) {
-          SshConnectionState.connected    => (const Color(0xFF4CAF50), Icons.circle),
-          SshConnectionState.connecting   => (const Color(0xFFFFC107), Icons.circle),
-          SshConnectionState.error        => (const Color(0xFFFF5722), Icons.circle),
-          SshConnectionState.disconnected => (const Color(0xFF9E9E9E), Icons.circle_outlined),
+          SshConnectionState.connected => (
+            const Color(0xFF4CAF50),
+            Icons.circle,
+          ),
+          SshConnectionState.connecting => (
+            const Color(0xFFFFC107),
+            Icons.circle,
+          ),
+          SshConnectionState.error => (const Color(0xFFFF5722), Icons.circle),
+          SshConnectionState.disconnected => (
+            const Color(0xFF9E9E9E),
+            Icons.circle_outlined,
+          ),
         };
 
         return GestureDetector(
@@ -128,25 +156,25 @@ class _SshStatusChip extends StatelessWidget {
           child: ConstrainedBox(
             constraints: const BoxConstraints(minHeight: 40),
             child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Bolinha de status pulsante quando conectando
-              if (state == SshConnectionState.connecting)
-                _PulsingDot(color: color)
-              else
-                Icon(icon, color: color, size: 7),
-              const SizedBox(width: 4),
-              Text(
-                label,
-                style: TextStyle(
-                  color: theme.bg.withValues(alpha: 0.85),
-                  fontFamily: 'monospace',
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Bolinha de status pulsante quando conectando
+                if (state == SshConnectionState.connecting)
+                  _PulsingDot(color: color)
+                else
+                  Icon(icon, color: color, size: 7),
+                const SizedBox(width: 4),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: theme.bg.withValues(alpha: 0.85),
+                    fontFamily: 'monospace',
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
           ),
         );
       },

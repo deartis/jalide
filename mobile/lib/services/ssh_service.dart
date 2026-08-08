@@ -109,9 +109,9 @@ class SshSession {
     _inputSink?.add(Uint8List.fromList(utf8.encode(data)));
   }
 
-  /// Aguarda o sshd do Termux estar pronto via polling (máx 3 tentativas)
+  /// Aguarda o sshd do Termux estar pronto via polling (máx 10 tentativas, 5 segundos)
   Future<void> _waitForSshd() async {
-    const maxAttempts = 3;
+    const maxAttempts = 10;
     const delayBetweenAttempts = Duration(milliseconds: 500);
     for (int i = 0; i < maxAttempts; i++) {
       try {
@@ -146,7 +146,7 @@ class SshSession {
       try {
         debugPrint('🚀 [SshSession] Solicitando inicialização do sshd no Termux...');
         await FileService.channel.invokeMethod('runTermuxCommand', {
-          'script': 'pgrep sshd || sshd',
+          'script': 'export PATH=\$PATH:/data/data/com.termux/files/usr/bin; pgrep sshd || sshd',
         });
         debugPrint('✅ [SshSession] Comando de inicialização do sshd enviado ao Termux.');
         // Polling: aguarda o sshd estar pronto com retry
