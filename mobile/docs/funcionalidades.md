@@ -148,7 +148,20 @@ Suporte a customização visual de alta fidelidade para se adequar ao ambiente p
 
 ---
 
-### 13. Resumo das Tecnologias e Dependências Principais
+### 14. Auto-Detecção de Projetos & Orquestrador de Ambientes (`jalide.json`)
+O JALIDE é capaz de escanear a estrutura de arquivos da pasta aberta para inferir a linguagem e framework do projeto, orquestrando automaticamente a inicialização dos daemons e serviços necessários no Termux ou SSH remoto.
+- **Auto-Detecção de Stack**:
+  - **`package.json`**: Identifica projetos **Node.js / React / Vue / Vite** (`npm run dev`).
+  - **`composer.json`**: Identifica projetos **PHP / Laravel** (`php artisan serve`), sugerindo daemons MySQL/MariaDB e SSHD.
+  - **`requirements.txt` / `pyproject.toml`**: Identifica projetos **Python / Django / FastAPI** (`python main.py`), sugerindo daemons PostgreSQL e SSHD.
+  - **`pom.xml` / `build.gradle`**: Identifica projetos **Java / Spring Boot** (`./mvnw spring-boot:run`).
+  - **`*.csproj` / `*.sln`**: Identifica projetos **C# / .NET** (`dotnet watch run`).
+- **Manifesto `jalide.json`**: Permite definir um arquivo `.jalide/config.json` ou `jalide.json` na raiz do projeto especificando variáveis de ambiente (`env`), serviços a inicializar (`services`), comandos `preStart` e o comando principal de desenvolvimento (`startCommand`).
+- **Status do Ambiente (`EnvironmentStatusBar`)**: Exibe no topo do editor um chip animado com o status em tempo real dos serviços (🟢 Rodando, 🟡 Iniciando, 🔴 Parado) e permite gerar o arquivo `jalide.json` na raiz do projeto com 1 toque.
+
+---
+
+### 15. Resumo das Tecnologias e Dependências Principais
 - **`flutter_code_editor` & `highlight`**: Usado para a renderização, formatação visual e realce de sintaxe do editor de código.
 - **`dartssh2`**: Mecanismo que provê cliente SSH2 nativo no Dart e conexões seguras de arquivos por SFTP.
 - **`xterm` & `flutter_pty`**: Exibição visual de terminal e criação de instâncias de terminal locais do sistema operacional.

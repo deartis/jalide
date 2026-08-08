@@ -34,6 +34,7 @@ class StatusBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = ThemeProvider.of(context).current;
     return Container(
+      width: double.infinity,
       color: theme.accent,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
       child: SingleChildScrollView(

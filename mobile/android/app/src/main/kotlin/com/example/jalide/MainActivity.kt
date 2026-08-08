@@ -33,6 +33,13 @@ class MainActivity : FlutterActivity() {
                     // mas vou colocar o arquivo completo para garantir)
                     "runTermuxCommand" -> {
                         val script = call.argument<String>("script") ?: ""
+                        val perm = "com.termux.permission.RUN_COMMAND"
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+                            checkSelfPermission(perm) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                            requestPermissions(arrayOf(perm), 1002)
+                            result.error("TERMUX_PERMISSION_DENIED", "Permissão com.termux.permission.RUN_COMMAND não concedida. Solicitação enviada ao sistema.", null)
+                            return@setMethodCallHandler
+                        }
                         try {
                             val intent = Intent().apply {
                                 action = "com.termux.RUN_COMMAND"
@@ -42,9 +49,22 @@ class MainActivity : FlutterActivity() {
                                 putExtra("com.termux.RUN_COMMAND_WORKDIR", "/data/data/com.termux/files/home")
                                 putExtra("com.termux.RUN_COMMAND_BACKGROUND", true)
                             }
-                            startService(intent)
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                try {
+                                    startService(intent)
+                                } catch (e: Exception) {
+                                    startForegroundService(intent)
+                                }
+                            } else {
+                                startService(intent)
+                            }
                             result.success(true)
-                        } catch (e: Exception) { result.error("TERMUX_ERROR", e.message, null) }
+                        } catch (e: Exception) {
+                            if (e is SecurityException && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                                requestPermissions(arrayOf(perm), 1002)
+                            }
+                            result.error("TERMUX_ERROR", e.message, null)
+                        }
                     }
 
                     "takeSafPermission" -> {

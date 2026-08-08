@@ -17,6 +17,7 @@ import 'package:highlight/languages/markdown.dart';
 import 'package:jalide/models/editor_tab.dart';
 import 'package:jalide/services/ssh_service.dart';
 import 'package:jalide/screens/about_screen.dart';
+import 'package:jalide/screens/help_screen.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -41,6 +42,9 @@ import '../widgets/editor_tabs_bar.dart';
 import '../widgets/ai_chat_panel.dart';
 import '../widgets/ai_settings_dialog.dart';
 import '../utils/code_formatter.dart';
+import '../services/project_stack_detector.dart';
+import '../services/environment_orchestrator.dart';
+import '../widgets/environment_status_bar.dart';
 import 'ssh_connect_screen.dart';
 import '../l10n/app_localizations.dart';
 import '../widgets/find_replace_bar.dart';
@@ -119,6 +123,9 @@ class _EditorScreenState extends State<EditorScreen>
   // Explorer de Projeto
   String? _projectPath;
   List<Map<String, dynamic>> _projectFiles = [];
+  JalideProjectConfig? _projectConfig;
+  final EnvironmentOrchestrator _environmentOrchestrator =
+      EnvironmentOrchestrator();
 
   // Configurações
   final AIService _aiService = AIService();
@@ -277,15 +284,18 @@ class _EditorScreenState extends State<EditorScreen>
           setState(() {
             _activeSshSession = _sshConnectionManager.currentSession;
             _terminalMode = TerminalMode.ssh;
-            if (persistedState.isRemoteProject &&
-                persistedState.projectPath != null) {
-              _isRemoteProject = true;
-            }
           });
-          if (persistedState.isRemoteProject &&
-              persistedState.projectPath != null &&
+          final prefs = await SharedPreferences.getInstance();
+          final targetRemotePath =
+              persistedState.projectPath ??
+              prefs.getString('last_project_path');
+          if (targetRemotePath != null &&
+              targetRemotePath.isNotEmpty &&
               mounted) {
-            await _loadRemoteProjectFiles(persistedState.projectPath!);
+            setState(() {
+              _isRemoteProject = true;
+            });
+            await _loadRemoteProjectFiles(targetRemotePath);
           }
           await _reloadRemoteTabsContent();
           _showToast(
@@ -487,8 +497,9 @@ class _EditorScreenState extends State<EditorScreen>
     _lastContextPath = currentPath;
 
     // Só atualiza contexto se há uma sessão ativa
-    if (_chatHistory.length <= 1)
+    if (_chatHistory.length <= 1) {
       return; // Apenas msg de sistema = sem conversa
+    }
 
     // Evita adicionar marcadores de contexto duplicados consecutivos
     if (_chatHistory.isNotEmpty &&
@@ -558,15 +569,14 @@ class _EditorScreenState extends State<EditorScreen>
 
     // Load Project Path
     final savedProjectPath = prefs.getString('last_project_path');
-    if (savedProjectPath != null) {
-      bool exists = false;
-      if (savedProjectPath.startsWith('content://')) {
-        exists = true;
-      } else {
-        exists = Directory(savedProjectPath).existsSync();
-      }
+    if (savedProjectPath != null && savedProjectPath.isNotEmpty) {
+      bool isSpecialPath =
+          savedProjectPath.startsWith('content://') ||
+          savedProjectPath.startsWith('/data/data/com.termux') ||
+          savedProjectPath.contains('jalide-workspace');
+      bool exists = isSpecialPath || Directory(savedProjectPath).existsSync();
 
-      if (exists) {
+      if (exists && !_isRemoteProject) {
         await _loadProjectFiles(savedProjectPath);
       }
     }
@@ -711,6 +721,19 @@ class _EditorScreenState extends State<EditorScreen>
         });
         _loadGitStatus();
         _moduleManager.onProjectOpened(path);
+        // Persiste o caminho do projeto ativo no SharedPreferences
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('last_project_path', path);
+        } catch (_) {}
+        // Auto-detecta a stack e cria jalide.json caso não exista
+        try {
+          final config = await ProjectStackDetector.detectLocal(path);
+          if (mounted) {
+            setState(() => _projectConfig = config);
+          }
+          _environmentOrchestrator.startEnvironment(config: config);
+        } catch (_) {}
       }
     } catch (e) {
       _showToast('Erro ao listar arquivos: $e', type: _ToastType.error);
@@ -743,9 +766,40 @@ class _EditorScreenState extends State<EditorScreen>
         _moduleManager.onProjectOpened(path);
         // Persiste o caminho do projeto para retomada após reinício do app
         await SshSessionStateService.updateProjectPath(path);
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('last_project_path', path);
+        } catch (_) {}
+        try {
+          final config = ProjectStackDetector.detectFromFilenames(
+            p.posix.basename(path),
+            files.map((f) => f.name).toList(),
+          );
+          if (mounted) {
+            setState(() => _projectConfig = config);
+          }
+          _environmentOrchestrator.startEnvironment(
+            config: config,
+            sshSession: _activeSshSession,
+          );
+        } catch (_) {}
       }
     } catch (e) {
       _showToast('Erro ao listar arquivos remotos: $e', type: _ToastType.error);
+    }
+  }
+
+  Future<void> _saveJalideJson(String content) async {
+    final path = _projectPath;
+    if (path == null) return;
+    final targetPath = _isRemoteProject
+        ? p.posix.join(path, 'jalide.json')
+        : p.join(path, 'jalide.json');
+
+    if (_isRemoteProject && _activeSshSession != null) {
+      await _activeSshSession!.writeFile(targetPath, content);
+    } else {
+      await FileService.saveFile(targetPath, content);
     }
   }
 
@@ -1032,6 +1086,10 @@ class _EditorScreenState extends State<EditorScreen>
     } else {
       await File(path).writeAsString(content);
     }
+
+    if (_debugAutoSave) {
+      await _verifyWrittenFile(path, content, isRemote);
+    }
   }
 
   Future<void> _saveFile() async {
@@ -1042,6 +1100,7 @@ class _EditorScreenState extends State<EditorScreen>
     }
     if (_currentSave != null) {
       debugPrint('JALIDE_SAVE_BLOCKED: Save already in progress');
+      _debugAutoSaveLog('SKIP_BUSY', path: _activePath, busy: true);
       return;
     }
 
@@ -1049,15 +1108,40 @@ class _EditorScreenState extends State<EditorScreen>
       _formatCode(silent: true);
     }
 
+    final controller = _activeController!;
+    final text = controller.text;
+    _debugAutoSaveLog(
+      'SEND',
+      path: _activePath,
+      textLen: text.length,
+      textHash: text.hashCode,
+      cursor: controller.selection.isValid
+          ? controller.selection.baseOffset
+          : -1,
+      composing: controller.value.composing.isValid &&
+          !controller.value.composing.isCollapsed,
+      busy: _currentSave != null,
+    );
+
     final future = _writeFileContent(
       _activePath!,
-      _activeController!.text,
+      text,
       _tabController.activeTab?.isRemote ?? false,
     );
     _currentSave = future;
     try {
       await future;
       if (!mounted) return;
+
+      final textMovedOn = controller.text != text;
+      _debugAutoSaveLog(
+        textMovedOn ? 'MARK_CLEAN_STALE' : 'MARK_CLEAN_OK',
+        path: _activePath,
+        textLen: controller.text.length,
+        textHash: controller.text.hashCode,
+        detail: textMovedOn ? 'texto mudou durante a gravacao' : null,
+      );
+
       _tabController.markTabSaved(_tabController.activeTabIndex);
       _moduleManager.onFileSaved(_activePath);
       _showToast('Salvo com sucesso', type: _ToastType.success);
@@ -1144,7 +1228,19 @@ class _EditorScreenState extends State<EditorScreen>
     debugPrint('JALIDE_SAVE_AS_PATH: $finalPath');
 
     try {
-      final content = _activeController!.text;
+      final controller = _activeController!;
+      final content = controller.text;
+      _debugAutoSaveLog(
+        'SEND',
+        path: finalPath,
+        textLen: content.length,
+        textHash: content.hashCode,
+        cursor: controller.selection.isValid
+            ? controller.selection.baseOffset
+            : -1,
+        composing: controller.value.composing.isValid &&
+            !controller.value.composing.isCollapsed,
+      );
       final activeTab = _tabController.activeTab;
       // BUG1 FIX: usa _writeFileContent para suportar SSH/SAF corretamente
       await _writeFileContent(finalPath, content, activeTab?.isRemote ?? false);
@@ -1152,6 +1248,14 @@ class _EditorScreenState extends State<EditorScreen>
       _tabController.updateTabLanguageFromPath(
         _tabController.activeTabIndex,
         finalPath,
+      );
+      final textMovedOn = controller.text != content;
+      _debugAutoSaveLog(
+        textMovedOn ? 'MARK_CLEAN_STALE' : 'MARK_CLEAN_OK',
+        path: finalPath,
+        textLen: controller.text.length,
+        textHash: controller.text.hashCode,
+        detail: textMovedOn ? 'texto mudou durante a gravacao' : null,
       );
       _tabController.markTabSaved(_tabController.activeTabIndex);
       _saveTabsPreference();
@@ -1167,6 +1271,84 @@ class _EditorScreenState extends State<EditorScreen>
     }
   }
 
+  // ─── Instrumentação temporária para caçar o bug de auto-save ───────────────
+  // Remove estas helpers junto com os logs JALIDE_AUTOSAVE_DEBUG após o diagnóstico.
+  static const bool _debugAutoSave = true;
+
+  void _debugAutoSaveLog(
+    String event, {
+    String? path,
+    int? textLen,
+    int? textHash,
+    int? cursor,
+    bool? composing,
+    bool? busy,
+    int? diskLen,
+    int? diskHash,
+    String? detail,
+  }) {
+    if (!_debugAutoSave) return;
+    final sb = StringBuffer('JALIDE_AUTOSAVE_DEBUG [$event]');
+    sb.write(' path=${path ?? '-'}');
+    if (textLen != null) sb.write(' textLen=$textLen');
+    if (textHash != null) sb.write(' textHash=$textHash');
+    if (cursor != null) sb.write(' cursor=$cursor');
+    if (composing != null) sb.write(' composing=$composing');
+    if (busy != null) sb.write(' busy=$busy');
+    if (diskLen != null) sb.write(' diskLen=$diskLen');
+    if (diskHash != null) sb.write(' diskHash=$diskHash');
+    if (detail != null) sb.write(' detail=$detail');
+    debugPrint(sb.toString());
+  }
+
+  String _diffSummary(String a, String b) {
+    final len = a.length < b.length ? a.length : b.length;
+    var i = 0;
+    while (i < len && a[i] == b[i]) {
+      i++;
+    }
+    if (i >= len) return 'prefixo igual (len=$len)';
+    final start = i - 20 < 0 ? 0 : i - 20;
+    final endA = (i + 20) > a.length ? a.length : (i + 20);
+    final endB = (i + 20) > b.length ? b.length : (i + 20);
+    return 'firstDiff@$i esperado="...${a.substring(start, endA)}..." recebido="...${b.substring(start, endB)}..."';
+  }
+
+  Future<void> _verifyWrittenFile(String path, String expected, bool isRemote) async {
+    try {
+      String? onDisk;
+      if (path.startsWith('content://')) {
+        final result = await _termuxChannel.invokeMethod('readSafFile', {
+          'uri': path,
+        });
+        if (result is String) onDisk = result;
+      } else if (isRemote && _activeSshSession != null) {
+        onDisk = await _activeSshSession!.readFile(path);
+      } else {
+        onDisk = await File(path).readAsString();
+      }
+
+      if (onDisk == null) {
+        _debugAutoSaveLog('VERIFY_SKIP', path: path, detail: 'read-back indisponivel');
+        return;
+      }
+
+      final ok = onDisk == expected;
+      _debugAutoSaveLog(
+        ok ? 'VERIFY_OK' : 'VERIFY_MISMATCH',
+        path: path,
+        textLen: expected.length,
+        textHash: expected.hashCode,
+        diskLen: onDisk.length,
+        diskHash: onDisk.hashCode,
+        detail: ok ? null : _diffSummary(expected, onDisk),
+      );
+    } catch (e) {
+      _debugAutoSaveLog('VERIFY_ERROR', path: path, detail: '$e');
+    }
+  }
+  // ─── Fim da instrumentação ─────────────────────────────────────────────────
+
   void _triggerAutoSave(EditorTab tab) {
     // BUG2 FIX: timer individual por path da aba, evita que a aba A cancele o save da aba B
     if (tab.path == null) return;
@@ -1175,7 +1357,6 @@ class _EditorScreenState extends State<EditorScreen>
     _autoSaveTimers[tabPath]?.cancel();
     _autoSaveTimers[tabPath] = Timer(const Duration(milliseconds: 1500), () async {
       if (!mounted) return;
-      if (_currentSave != null) return;
 
       // Revalida o índice — o usuário pode ter fechado a aba enquanto o timer rodava
       final currentIndex = _tabController.openTabs.indexOf(tab);
@@ -1184,13 +1365,39 @@ class _EditorScreenState extends State<EditorScreen>
         return;
       }
 
+      final controller = tab.controller;
+      final valueSnapshot = controller.value;
+
+      _debugAutoSaveLog(
+        'FIRE',
+        path: tabPath,
+        textLen: valueSnapshot.text.length,
+        textHash: valueSnapshot.text.hashCode,
+        cursor: valueSnapshot.selection.isValid
+            ? valueSnapshot.selection.baseOffset
+            : -1,
+        composing: valueSnapshot.composing.isValid &&
+            !valueSnapshot.composing.isCollapsed,
+        busy: _currentSave != null,
+        detail: tab.hasUnsavedChanges ? 'dirty' : 'clean',
+      );
+
+      if (_currentSave != null) {
+        _debugAutoSaveLog('SKIP_BUSY', path: tabPath, busy: true);
+        return;
+      }
+
       if (tab.hasUnsavedChanges && tab.path != null) {
         final path = tab.path!;
         final isRemote = tab.isRemote;
 
         // Formata primeiro; _isFormatting suprime o loop de auto-save
+        final isComposing = controller.value.composing.isValid &&
+            !controller.value.composing.isCollapsed;
+
         if (_autoFormatOnSave &&
-            currentIndex == _tabController.activeTabIndex) {
+            currentIndex == _tabController.activeTabIndex &&
+            !isComposing) {
           _formatCode(silent: true);
           // Aguarda o frame para que controller.text reflita o texto formatado
           await Future.microtask(() {});
@@ -1198,12 +1405,36 @@ class _EditorScreenState extends State<EditorScreen>
         }
 
         // Lê o texto DEPOIS da formatação
-        final text = tab.controller.text;
+        final text = controller.text;
+
+        _debugAutoSaveLog(
+          'SEND',
+          path: path,
+          textLen: text.length,
+          textHash: text.hashCode,
+          cursor: controller.selection.isValid
+              ? controller.selection.baseOffset
+              : -1,
+          composing: controller.value.composing.isValid &&
+              !controller.value.composing.isCollapsed,
+          busy: _currentSave != null,
+        );
+
         final future = _writeFileContent(path, text, isRemote);
         _currentSave = future;
         try {
           await future;
           if (!mounted) return;
+
+          final textMovedOn = controller.text != text;
+          _debugAutoSaveLog(
+            textMovedOn ? 'MARK_CLEAN_STALE' : 'MARK_CLEAN_OK',
+            path: path,
+            textLen: controller.text.length,
+            textHash: controller.text.hashCode,
+            detail: textMovedOn ? 'texto mudou durante a gravacao (digitou no meio do save)' : null,
+          );
+
           _tabController.markTabSaved(currentIndex);
           _moduleManager.onAutoSaved(path);
         } catch (e) {
@@ -1221,6 +1452,7 @@ class _EditorScreenState extends State<EditorScreen>
   Future<void> _instantSaveTab(EditorTab tab) async {
     if (tab.hasUnsavedChanges && tab.path != null) {
       if (_currentSave != null) {
+        _debugAutoSaveLog('AWAIT_BUSY', path: tab.path, busy: true);
         await _currentSave!;
         if (!mounted) return;
       }
@@ -1238,8 +1470,23 @@ class _EditorScreenState extends State<EditorScreen>
         if (!mounted) return;
       }
 
+      final controller = tab.controller;
       // Lê o texto DEPOIS da formatação
-      final text = tab.controller.text;
+      final text = controller.text;
+
+      _debugAutoSaveLog(
+        'SEND',
+        path: path,
+        textLen: text.length,
+        textHash: text.hashCode,
+        cursor: controller.selection.isValid
+            ? controller.selection.baseOffset
+            : -1,
+        composing: controller.value.composing.isValid &&
+            !controller.value.composing.isCollapsed,
+        busy: _currentSave != null,
+      );
+
       final future = _writeFileContent(path, text, isRemote);
       _currentSave = future;
       try {
@@ -1247,6 +1494,14 @@ class _EditorScreenState extends State<EditorScreen>
         if (!mounted) return;
         final currentTabIndex = _tabController.openTabs.indexOf(tab);
         if (currentTabIndex != -1) {
+          final textMovedOn = controller.text != text;
+          _debugAutoSaveLog(
+            textMovedOn ? 'MARK_CLEAN_STALE' : 'MARK_CLEAN_OK',
+            path: path,
+            textLen: controller.text.length,
+            textHash: controller.text.hashCode,
+            detail: textMovedOn ? 'texto mudou durante a gravacao' : null,
+          );
           _tabController.markTabSaved(currentTabIndex);
           _moduleManager.onAutoSaved(path);
         }
@@ -1856,42 +2111,36 @@ class _EditorScreenState extends State<EditorScreen>
         _tabController.forceRecordActiveTabHistory();
         final selection = controller.selection;
 
-        // Detecta espaços trailing no cursor antes de formatar
-        String? trailingSpaces;
-        int? cursorLineIndex;
-        if (selection.isValid && selection.isCollapsed) {
-          int lineIdx = 0;
-          int col = 0;
-          for (int i = 0; i < selection.baseOffset; i++) {
-            if (text[i] == '\n') {
-              lineIdx++;
-              col = 0;
-            } else {
-              col++;
-            }
-          }
-          final origLines = text.split('\n');
-          if (lineIdx < origLines.length) {
-            final origLine = origLines[lineIdx];
-            final trimmedRight = origLine.trimRight();
-            final trailingLen = origLine.length - trimmedRight.length;
-            if (col > trimmedRight.length && trailingLen > 0) {
-              // Cursor estava nos espaços trailing — preservar
-              final extraSpaces = col - trimmedRight.length;
-              trailingSpaces = ' ' * extraSpaces;
-              cursorLineIndex = lineIdx;
-            }
-          }
+        // Preserva os espaços trailing que o formatter removeria com trim().
+        // O formato nunca deve remover caracteres do arquivo — apenas
+        // corrigir indentação. Se após a preservação o texto for idêntico,
+        // nada é aplicado (sem mexer no cursor).
+        final origLines = text.split('\n');
+        final trailingOf = <String>[
+          for (final l in origLines) l.substring(l.trimRight().length),
+        ];
+        final Map<int, String> preserve = {};
+        for (int i = 0; i < trailingOf.length; i++) {
+          if (trailingOf[i].isNotEmpty) preserve[i] = trailingOf[i];
         }
 
-        // Injeta os espaços trailing de volta na linha do cursor (se necessário)
-        if (trailingSpaces != null && cursorLineIndex != null) {
+        if (preserve.isNotEmpty) {
           final fmtLines = formatted.split('\n');
-          if (cursorLineIndex < fmtLines.length) {
-            fmtLines[cursorLineIndex] =
-                fmtLines[cursorLineIndex] + trailingSpaces;
-            formatted = fmtLines.join('\n');
+          preserve.forEach((i, ws) {
+            if (i < fmtLines.length) {
+              fmtLines[i] = fmtLines[i] + ws;
+            }
+          });
+          formatted = fmtLines.join('\n');
+        }
+
+        // Se a única mudança do formatter era espaço trailing (agora
+        // preservado), não há o que aplicar — evita tocar no texto/cursor.
+        if (formatted == text) {
+          if (!silent) {
+            _showToast('O código já está formatado');
           }
+          return;
         }
 
         TextSelection newSelection;
@@ -1930,6 +2179,7 @@ class _EditorScreenState extends State<EditorScreen>
           controller.value = controller.value.copyWith(
             text: formatted,
             selection: newSelection,
+            composing: TextRange.empty,
           );
         } finally {
           _isFormatting = false;
@@ -2787,6 +3037,7 @@ class _EditorScreenState extends State<EditorScreen>
           isRemoteProject: _isRemoteProject,
         ),
         body: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             // Banner de modo offline: projeto remoto sem conexão ativa
             // (banner sutil substituiu a faixa SSH do topo)
@@ -2794,6 +3045,22 @@ class _EditorScreenState extends State<EditorScreen>
                 _activeSshSession != null &&
                 !(_activeSshSession!.isConnected))
               _buildOfflineBanner(),
+            if (_projectConfig != null)
+              EnvironmentStatusBar(
+                projectConfig: _projectConfig!,
+                orchestrator: _environmentOrchestrator,
+                projectPath: _projectPath,
+                onSaveConfig: _saveJalideJson,
+                onConfigUpdated: () {
+                  if (_projectPath != null) {
+                    if (_isRemoteProject) {
+                      _loadRemoteProjectFiles(_projectPath!);
+                    } else {
+                      _loadProjectFiles(_projectPath!);
+                    }
+                  }
+                },
+              ),
             if (_tabController.hasTabs)
               EditorTabsBar(
                 tabs: _tabController.openTabs,
@@ -2845,17 +3112,23 @@ class _EditorScreenState extends State<EditorScreen>
                         ),
                       ),
                     ),
+                  if (_tabController.activeTabIndex != -1 &&
+                      !_isTerminalVisible)
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: GhostSuggestionBar(
+                        key: ValueKey('ghost_${_tabController.activeTabIndex}'),
+                        controller: _activeController!,
+                        languageName: _tabController.languageName,
+                        enabled: _ghostSuggestionsEnabled,
+                        aiService: _aiService,
+                      ),
+                    ),
                 ],
               ),
             ),
-            if (_tabController.activeTabIndex != -1)
-              GhostSuggestionBar(
-                key: ValueKey('ghost_${_tabController.activeTabIndex}'),
-                controller: _activeController!,
-                languageName: _tabController.languageName,
-                enabled: _ghostSuggestionsEnabled,
-                aiService: _aiService,
-              ),
             if (_showAuxKeyboard)
               AuxKeyboard(
                 auxKeys: _currentAuxKeys,
@@ -3014,6 +3287,20 @@ class _EditorScreenState extends State<EditorScreen>
                 : _theme.textMuted,
           ),
           tooltip: AppLocalizations.of(context)!.save,
+        ),
+        IconButton(
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const HelpScreen()),
+            );
+          },
+          icon: Icon(
+            Icons.help_outline_rounded,
+            size: 22,
+            color: _theme.textMuted,
+          ),
+          tooltip: 'Ajuda & Guia do Usuário',
         ),
         IconButton(
           onPressed: () {
@@ -3872,7 +4159,6 @@ class _EditorScreenState extends State<EditorScreen>
     if (mounted) setState(() {});
   }
 
-  GitStatus? _gitStatus;
   String? _gitBranch;
 
   Future<void> _loadGitStatus() async {
@@ -3880,22 +4166,21 @@ class _EditorScreenState extends State<EditorScreen>
     try {
       final isRepo = await GitService.isGitRepo(_projectPath!);
       if (!isRepo) {
-        if (mounted)
+        if (mounted) {
           setState(() {
-            _gitStatus = null;
             _gitBranch = null;
           });
+        }
         return;
       }
-      final status = await GitService.getStatus(_projectPath!);
       final branch = await GitService.getCurrentBranch(_projectPath!);
-      if (mounted)
+      if (mounted) {
         setState(() {
-          _gitStatus = status;
           _gitBranch = branch;
         });
+      }
     } catch (e) {
-      debugPrint('Git status error: ');
+      debugPrint('Git status error: $e');
     }
   }
 
@@ -4127,7 +4412,7 @@ class _GitPanelState extends State<_GitPanel> {
                     Icon(Icons.code_rounded, color: t.accent, size: 20),
                     const SizedBox(width: 8),
                     Text(
-                      'Git',
+                      _branch.isNotEmpty ? 'Git ($_branch)' : 'Git',
                       style: TextStyle(
                         color: t.textPri,
                         fontWeight: FontWeight.bold,

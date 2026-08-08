@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../services/ssh_connection_manager.dart';
 import '../services/ssh_host_key_service.dart';
 import '../services/ssh_service.dart';
+import '../services/ssh_session_state_service.dart';
 import '../theme/jalide_theme.dart';
+import 'help_screen.dart';
 
 /// Tela de gerenciamento e conexão SSH.
 /// Exibe perfis salvos e permite criar, editar e conectar.
@@ -31,6 +34,21 @@ class SshConnectScreen extends StatefulWidget {
 class _SshConnectScreenState extends State<SshConnectScreen> {
   String? _connectingId;
   String? _testingId;
+  StreamSubscription<SshConnectionState>? _stateSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _stateSubscription = widget.connectionManager.connectionStateStream.listen((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _stateSubscription?.cancel();
+    super.dispose();
+  }
 
   JalideThemeVariant get _theme => ThemeProvider.of(context).current;
 
@@ -466,6 +484,16 @@ class _SshConnectScreenState extends State<SshConnectScreen> {
         ),
         actions: [
           IconButton(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const HelpScreen()),
+              );
+            },
+            icon: Icon(Icons.help_outline_rounded, color: _theme.textMuted, size: 20),
+            tooltip: 'Guia do Termux & SSH',
+          ),
+          IconButton(
             onPressed: () => _showAddProfileDialog(),
             icon: const Icon(Icons.add, color: Color(0xFF7AA2F7)),
             tooltip: 'Nova conexão',
@@ -670,7 +698,11 @@ class _SshConnectScreenState extends State<SshConnectScreen> {
                     children: [
                       if (isOnline)
                         TextButton.icon(
-                          onPressed: widget.onDisconnect,
+                          onPressed: () async {
+                            await widget.onDisconnect?.call();
+                            await SshSessionStateService.clear();
+                            if (mounted) setState(() {});
+                          },
                           icon: const Icon(Icons.power_settings_new_outlined, size: 16),
                           label: const Text('Desconectar', style: TextStyle(fontSize: 11)),
                           style: TextButton.styleFrom(
