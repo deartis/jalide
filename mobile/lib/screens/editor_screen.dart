@@ -30,7 +30,6 @@ import '../services/ssh_connection_manager.dart';
 import '../services/ssh_foreground_service.dart';
 import '../services/ssh_host_key_service.dart';
 import '../services/ssh_session_state_service.dart';
-import '../services/git_service.dart';
 import '../theme/jalide_theme.dart';
 import '../controllers/editor_tab_controller.dart';
 import '../widgets/aux_keyboard.dart';
@@ -63,7 +62,6 @@ import 'package:highlight/languages/php.dart' as lang_php;
 import 'package:highlight/languages/cs.dart' as lang_cs;
 import '../modules/module_manager.dart';
 import '../modules/module_context.dart';
-import '../modules/git_module.dart';
 import '../modules/snippets_module.dart';
 import '../modules/word_count_module.dart';
 import '../modules/formatter_module.dart';
@@ -218,7 +216,6 @@ class _EditorScreenState extends State<EditorScreen>
     _sshConnectionManager.addListener(_onSshConnectionChanged);
     WidgetsBinding.instance.addObserver(this);
     _initializeAI();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadGitStatus());
     _initializeSshConnectionManager();
     // Escuta o botão "Desconectar" da notificação do Foreground Service
     SshForegroundService.addDataCallback(_onForegroundServiceData);
@@ -237,7 +234,6 @@ class _EditorScreenState extends State<EditorScreen>
   final ModuleManager _moduleManager = ModuleManager();
 
   void _initModules() {
-    _moduleManager.registerModule(GitModule());
     _moduleManager.registerModule(SnippetsModule());
     _moduleManager.registerModule(WordCountModule());
     _moduleManager.registerModule(FormatterModule());
@@ -680,7 +676,6 @@ class _EditorScreenState extends State<EditorScreen>
                 )
                 .toList();
           });
-          _loadGitStatus();
           _moduleManager.onProjectOpened(path);
         }
       } catch (e) {
@@ -719,7 +714,6 @@ class _EditorScreenState extends State<EditorScreen>
               )
               .toList();
         });
-        _loadGitStatus();
         _moduleManager.onProjectOpened(path);
         // Persiste o caminho do projeto ativo no SharedPreferences
         try {
@@ -762,7 +756,6 @@ class _EditorScreenState extends State<EditorScreen>
               )
               .toList();
         });
-        _loadGitStatus();
         _moduleManager.onProjectOpened(path);
         // Persiste o caminho do projeto para retomada após reinício do app
         await SshSessionStateService.updateProjectPath(path);
@@ -786,20 +779,6 @@ class _EditorScreenState extends State<EditorScreen>
       }
     } catch (e) {
       _showToast('Erro ao listar arquivos remotos: $e', type: _ToastType.error);
-    }
-  }
-
-  Future<void> _saveJalideJson(String content) async {
-    final path = _projectPath;
-    if (path == null) return;
-    final targetPath = _isRemoteProject
-        ? p.posix.join(path, 'jalide.json')
-        : p.join(path, 'jalide.json');
-
-    if (_isRemoteProject && _activeSshSession != null) {
-      await _activeSshSession!.writeFile(targetPath, content);
-    } else {
-      await FileService.saveFile(targetPath, content);
     }
   }
 
@@ -3049,17 +3028,10 @@ class _EditorScreenState extends State<EditorScreen>
               EnvironmentStatusBar(
                 projectConfig: _projectConfig!,
                 orchestrator: _environmentOrchestrator,
-                projectPath: _projectPath,
-                onSaveConfig: _saveJalideJson,
-                onConfigUpdated: () {
-                  if (_projectPath != null) {
-                    if (_isRemoteProject) {
-                      _loadRemoteProjectFiles(_projectPath!);
-                    } else {
-                      _loadProjectFiles(_projectPath!);
-                    }
-                  }
-                },
+                onUndo: () => _tabController.undoActiveTab(),
+                onRedo: () => _tabController.redoActiveTab(),
+                canUndo: _tabController.canUndoActiveTab,
+                canRedo: _tabController.canRedoActiveTab,
               ),
             if (_tabController.hasTabs)
               EditorTabsBar(
@@ -3144,14 +3116,15 @@ class _EditorScreenState extends State<EditorScreen>
             StatusBar(
               languageName: _languageName,
               hasUnsavedChanges: _activeHasUnsavedChanges,
+              isTerminalVisible: _isTerminalVisible,
               isAuxKeyboardVisible: _showAuxKeyboard,
+              isRemoteProject: _isRemoteProject,
               onAuxKeyboardToggle: () {
                 setState(() {
                   _showAuxKeyboard = !_showAuxKeyboard;
                 });
               },
               extraItems: _moduleManager.allStatusBarItems,
-              // Mostra o chip SSH na status bar apenas com projeto remoto ativo
               sshConnectionManager: _isRemoteProject
                   ? _sshConnectionManager
                   : null,
@@ -3289,42 +3262,6 @@ class _EditorScreenState extends State<EditorScreen>
           tooltip: AppLocalizations.of(context)!.save,
         ),
         IconButton(
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const HelpScreen()),
-            );
-          },
-          icon: Icon(
-            Icons.help_outline_rounded,
-            size: 22,
-            color: _theme.textMuted,
-          ),
-          tooltip: 'Ajuda & Guia do Usuário',
-        ),
-        IconButton(
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const AboutScreen()),
-            );
-          },
-          icon: Icon(Icons.info_outline, size: 22, color: _theme.textMuted),
-          tooltip: AppLocalizations.of(context)!.about,
-        ),
-        if (_projectPath != null)
-          IconButton(
-            onPressed: _showGitPanel,
-            icon: Icon(
-              Icons.code_rounded,
-              size: 20,
-              color: _gitBranch != null
-                  ? const Color(0xFFE07B1A)
-                  : _theme.textMuted,
-            ),
-            tooltip: _gitBranch ?? 'Git',
-          ),
-        IconButton(
           onPressed: _openAIPanel,
           icon: Icon(
             Icons.auto_awesome_rounded,
@@ -3377,6 +3314,18 @@ class _EditorScreenState extends State<EditorScreen>
                 break;
               case 'ai_settings':
                 _showAISettingsDialog();
+                break;
+              case 'help':
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const HelpScreen()),
+                );
+                break;
+              case 'about':
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const AboutScreen()),
+                );
                 break;
               case 'exit':
                 if (!mounted) return;
@@ -3462,10 +3411,12 @@ class _EditorScreenState extends State<EditorScreen>
                     : Icons.auto_awesome_outlined,
               ),
               const PopupMenuDivider(),
-              // ── Sessão
+              // ── Sessão & Suporte
               _menuItem('ssh', l10n.sshRemote, Icons.cloud_outlined),
               _menuItem('theme', l10n.changeTheme, Icons.palette_outlined),
               _menuItem('plugins', 'Plugins', Icons.extension_rounded),
+              _menuItem('help', 'Ajuda', Icons.help_outline_rounded),
+              _menuItem('about', l10n.about, Icons.info_outline),
               const PopupMenuDivider(),
               _menuItem('exit', l10n.exitApp, Icons.exit_to_app),
             ];
@@ -4159,48 +4110,6 @@ class _EditorScreenState extends State<EditorScreen>
     if (mounted) setState(() {});
   }
 
-  String? _gitBranch;
-
-  Future<void> _loadGitStatus() async {
-    if (_projectPath == null) return;
-    try {
-      final isRepo = await GitService.isGitRepo(_projectPath!);
-      if (!isRepo) {
-        if (mounted) {
-          setState(() {
-            _gitBranch = null;
-          });
-        }
-        return;
-      }
-      final branch = await GitService.getCurrentBranch(_projectPath!);
-      if (mounted) {
-        setState(() {
-          _gitBranch = branch;
-        });
-      }
-    } catch (e) {
-      debugPrint('Git status error: $e');
-    }
-  }
-
-  void _showGitPanel() {
-    if (_projectPath == null) {
-      _showToast('Abra um projeto primeiro');
-      return;
-    }
-    _loadGitStatus();
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _GitPanel(
-        projectPath: _projectPath!,
-        theme: _theme,
-        onRefresh: _loadGitStatus,
-      ),
-    );
-  }
 
   Widget _buildEditor() {
     if (_tabController.activeTabIndex == -1) {
@@ -4330,366 +4239,5 @@ class _EditorScreenState extends State<EditorScreen>
         ),
       ),
     );
-  }
-}
-
-class _GitPanel extends StatefulWidget {
-  final String projectPath;
-  final JalideThemeVariant theme;
-  final VoidCallback onRefresh;
-
-  const _GitPanel({
-    required this.projectPath,
-    required this.theme,
-    required this.onRefresh,
-  });
-
-  @override
-  State<_GitPanel> createState() => _GitPanelState();
-}
-
-class _GitPanelState extends State<_GitPanel> {
-  GitStatus? _status;
-  List<GitCommit> _commits = [];
-  String _branch = '';
-  bool _loading = true;
-  final _commitMsgController = TextEditingController();
-
-  @override
-  void initState() {
-    super.initState();
-    _loadData();
-  }
-
-  Future<void> _loadData() async {
-    setState(() => _loading = true);
-    try {
-      final status = await GitService.getStatus(widget.projectPath);
-      final branch = await GitService.getCurrentBranch(widget.projectPath);
-      final commits = await GitService.getLog(widget.projectPath, limit: 15);
-      if (mounted) {
-        setState(() {
-          _status = status;
-          _branch = branch;
-          _commits = commits;
-          _loading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final t = widget.theme;
-    return DraggableScrollableSheet(
-      initialChildSize: 0.6,
-      minChildSize: 0.3,
-      maxChildSize: 0.85,
-      builder: (ctx, scrollCtrl) {
-        return Container(
-          decoration: BoxDecoration(
-            color: t.bg,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-            border: Border(top: BorderSide(color: t.border)),
-          ),
-          child: Column(
-            children: [
-              Container(
-                margin: const EdgeInsets.only(top: 8),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: t.border,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(12),
-                child: Row(
-                  children: [
-                    Icon(Icons.code_rounded, color: t.accent, size: 20),
-                    const SizedBox(width: 8),
-                    Text(
-                      _branch.isNotEmpty ? 'Git ($_branch)' : 'Git',
-                      style: TextStyle(
-                        color: t.textPri,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
-                      ),
-                    ),
-                    const Spacer(),
-                    IconButton(
-                      icon: Icon(Icons.refresh, color: t.textMuted, size: 18),
-                      onPressed: _loadData,
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: _loading
-                    ? Center(
-                        child: CircularProgressIndicator(
-                          color: t.accent,
-                          strokeWidth: 2,
-                        ),
-                      )
-                    : DefaultTabController(
-                        length: 2,
-                        child: Column(
-                          children: [
-                            TabBar(
-                              labelColor: t.accent,
-                              unselectedLabelColor: t.textMuted,
-                              indicatorColor: t.accent,
-                              tabs: const [
-                                Tab(text: 'Arquivos'),
-                                Tab(text: 'Histórico'),
-                              ],
-                            ),
-                            Expanded(
-                              child: TabBarView(
-                                children: [_buildFilesTab(t), _buildLogTab(t)],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-              ),
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  border: Border(top: BorderSide(color: t.border)),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _commitMsgController,
-                        style: TextStyle(
-                          color: t.textPri,
-                          fontFamily: 'monospace',
-                          fontSize: 12,
-                        ),
-                        decoration: InputDecoration(
-                          hintText: 'Mensagem do commit...',
-                          hintStyle: TextStyle(
-                            color: t.textMuted,
-                            fontSize: 11,
-                          ),
-                          isDense: true,
-                          filled: true,
-                          fillColor: t.surface,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 8,
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(6),
-                            borderSide: BorderSide(color: t.border),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(6),
-                            borderSide: BorderSide(color: t.border),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(6),
-                            borderSide: BorderSide(color: t.accent),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    ElevatedButton(
-                      onPressed: _commitMsgController.text.trim().isEmpty
-                          ? null
-                          : _doCommit,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: t.accent,
-                        foregroundColor: t.bg,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 10,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                      ),
-                      child: const Text(
-                        'Commit',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildFilesTab(JalideThemeVariant t) {
-    final files = _status?.files ?? [];
-    if (files.isEmpty) {
-      return Center(
-        child: Text(
-          'Nenhuma alteração',
-          style: TextStyle(color: t.textMuted, fontSize: 13),
-        ),
-      );
-    }
-    return ListView.builder(
-      itemCount: files.length,
-      itemBuilder: (ctx, i) {
-        final f = files[i];
-        final (icon, color) = _fileStatusIcon(f.status, t);
-        return ListTile(
-          dense: true,
-          leading: Icon(icon, color: color, size: 16),
-          title: Text(
-            f.path,
-            style: TextStyle(
-              color: t.textPri,
-              fontFamily: 'monospace',
-              fontSize: 12,
-            ),
-            overflow: TextOverflow.ellipsis,
-          ),
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (!f.staged)
-                GestureDetector(
-                  onTap: () async {
-                    await GitService.add(widget.projectPath, filePath: f.path);
-                    _loadData();
-                    widget.onRefresh();
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: t.accent.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      'stage',
-                      style: TextStyle(
-                        color: t.accent,
-                        fontSize: 9,
-                        fontFamily: 'monospace',
-                      ),
-                    ),
-                  ),
-                ),
-              if (f.staged)
-                Icon(
-                  Icons.check_circle,
-                  color: const Color(0xFF50FA7B),
-                  size: 14,
-                ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildLogTab(JalideThemeVariant t) {
-    if (_commits.isEmpty) {
-      return Center(
-        child: Text(
-          'Nenhum commit',
-          style: TextStyle(color: t.textMuted, fontSize: 13),
-        ),
-      );
-    }
-    return ListView.builder(
-      itemCount: _commits.length,
-      itemBuilder: (ctx, i) {
-        final c = _commits[i];
-        return ListTile(
-          dense: true,
-          leading: Container(
-            width: 8,
-            height: 8,
-            margin: const EdgeInsets.only(top: 4),
-            decoration: BoxDecoration(
-              color: i == 0 ? t.accent : t.textMuted.withValues(alpha: 0.4),
-              shape: BoxShape.circle,
-            ),
-          ),
-          title: Text(
-            c.message,
-            style: TextStyle(color: t.textPri, fontSize: 12),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          subtitle: Text(
-            ' · ',
-            style: TextStyle(
-              color: t.textMuted,
-              fontSize: 10,
-              fontFamily: 'monospace',
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  (IconData, Color) _fileStatusIcon(String status, JalideThemeVariant t) {
-    switch (status) {
-      case 'modified':
-        return (Icons.edit, const Color(0xFFE0AF68));
-      case 'added':
-        return (Icons.add_circle, const Color(0xFF50FA7B));
-      case 'deleted':
-        return (Icons.remove_circle, const Color(0xFFF7768E));
-      case 'untracked':
-        return (Icons.help_outline, t.textMuted);
-      case 'renamed':
-        return (Icons.drive_file_rename_outline, const Color(0xFF7AA2F7));
-      default:
-        return (Icons.circle_outlined, t.textMuted);
-    }
-  }
-
-  Future<void> _doCommit() async {
-    final msg = _commitMsgController.text.trim();
-    if (msg.isEmpty) return;
-    try {
-      await GitService.add(widget.projectPath);
-      await GitService.commit(widget.projectPath, msg);
-      _commitMsgController.clear();
-      _loadData();
-      widget.onRefresh();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Commit criado: ',
-              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-            ),
-            backgroundColor: widget.theme.surface,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro: '), backgroundColor: Colors.redAccent),
-        );
-      }
-    }
   }
 }

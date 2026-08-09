@@ -160,6 +160,9 @@ class EditorTabController extends ChangeNotifier {
 
   // ─── Undo / Redo Operations ───────────────────────────────────────────────
 
+  bool get canUndoActiveTab => activeTab?.history.canUndo ?? false;
+  bool get canRedoActiveTab => activeTab?.history.canRedo ?? false;
+
   void forceRecordActiveTabHistory() {
     final tab = activeTab;
     if (tab != null) {
@@ -176,6 +179,7 @@ class EditorTabController extends ChangeNotifier {
     final previous = tab.history.undo(currentValue);
     if (previous != null) {
       tab.controller.value = previous;
+      notifyListeners();
     }
     tab.history.isExecutingUndoRedo = false;
   }
@@ -189,6 +193,7 @@ class EditorTabController extends ChangeNotifier {
     final next = tab.history.redo(currentValue);
     if (next != null) {
       tab.controller.value = next;
+      notifyListeners();
     }
     tab.history.isExecutingUndoRedo = false;
   }

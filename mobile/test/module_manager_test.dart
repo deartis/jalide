@@ -2,7 +2,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:jalide/controllers/editor_tab_controller.dart';
 import 'package:jalide/modules/editor_module.dart';
 import 'package:jalide/modules/formatter_module.dart';
-import 'package:jalide/modules/git_module.dart';
 import 'package:jalide/modules/module_context.dart';
 import 'package:jalide/modules/module_manager.dart';
 import 'package:jalide/modules/snippets_module.dart';
@@ -33,10 +32,10 @@ void main() {
 
   test('ModuleManager registra e inicializa modulos nativos', () {
     final manager = ModuleManager();
-    final git = GitModule();
+    final formatter = FormatterModule();
     final snippets = SnippetsModule();
 
-    manager.registerModule(git);
+    manager.registerModule(formatter);
     manager.registerModule(snippets);
 
     expect(manager.modules.length, 2);
@@ -47,7 +46,7 @@ void main() {
 
     final commands = manager.allCommands;
     expect(commands.isNotEmpty, isTrue);
-    expect(commands.any((c) => c.label.contains('Git')), isTrue);
+    expect(commands.any((c) => c.label.contains('Formatar')), isTrue);
     expect(commands.any((c) => c.label.contains('Snippet')), isTrue);
 
     final shortcuts = manager.allShortcuts;
@@ -59,35 +58,44 @@ void main() {
 
   test('ModuleManager desabilita modulos e exclui das agregacoes', () async {
     final manager = ModuleManager();
-    manager.registerModule(GitModule());
+    manager.registerModule(FormatterModule());
     manager.registerModule(SnippetsModule());
     await manager.loadState();
     manager.initAll(_buildContext(EditorTabController()));
 
-    expect(manager.isEnabled('git'), isTrue);
-    expect(manager.allCommands.any((c) => c.category == 'Git'), isTrue);
+    expect(manager.isEnabled('formatter'), isTrue);
+    expect(
+      manager.allCommands.any((c) => c.label == 'Formatar código'),
+      isTrue,
+    );
 
-    await manager.setEnabled('git', false);
+    await manager.setEnabled('formatter', false);
 
-    expect(manager.isEnabled('git'), isFalse);
-    expect(manager.allCommands.any((c) => c.category == 'Git'), isFalse);
+    expect(manager.isEnabled('formatter'), isFalse);
+    expect(
+      manager.allCommands.any((c) => c.label == 'Formatar código'),
+      isFalse,
+    );
     expect(manager.allShortcuts.containsKey('Ctrl+Shift+L'), isTrue);
 
-    await manager.setEnabled('git', true);
-    expect(manager.allCommands.any((c) => c.category == 'Git'), isTrue);
+    await manager.setEnabled('formatter', true);
+    expect(
+      manager.allCommands.any((c) => c.label == 'Formatar código'),
+      isTrue,
+    );
     manager.disposeAll();
   });
 
   test('ModuleManager persiste estado de desabilitados', () async {
     final manager = ModuleManager();
-    manager.registerModule(GitModule());
+    manager.registerModule(FormatterModule());
     await manager.loadState();
-    await manager.setEnabled('git', false);
+    await manager.setEnabled('formatter', false);
 
     final reloaded = ModuleManager();
-    reloaded.registerModule(GitModule());
+    reloaded.registerModule(FormatterModule());
     await reloaded.loadState();
-    expect(reloaded.isEnabled('git'), isFalse);
+    expect(reloaded.isEnabled('formatter'), isFalse);
 
     reloaded.disposeAll();
   });

@@ -2,23 +2,24 @@ import 'package:flutter/material.dart';
 
 import '../services/project_stack_detector.dart';
 import '../services/environment_orchestrator.dart';
-import '../services/file_service.dart';
 import '../theme/jalide_theme.dart';
 
 class EnvironmentStatusBar extends StatelessWidget {
   final JalideProjectConfig projectConfig;
   final EnvironmentOrchestrator orchestrator;
-  final String? projectPath;
-  final VoidCallback? onConfigUpdated;
-  final Future<void> Function(String content)? onSaveConfig;
+  final VoidCallback? onUndo;
+  final VoidCallback? onRedo;
+  final bool canUndo;
+  final bool canRedo;
 
   const EnvironmentStatusBar({
     super.key,
     required this.projectConfig,
     required this.orchestrator,
-    this.projectPath,
-    this.onConfigUpdated,
-    this.onSaveConfig,
+    this.onUndo,
+    this.onRedo,
+    this.canUndo = true,
+    this.canRedo = true,
   });
 
   @override
@@ -124,29 +125,44 @@ class EnvironmentStatusBar extends StatelessWidget {
                 ),
               ),
 
-              // Botão para criar jalide.json se não existir
-              InkWell(
-                onTap: () => _showGenerateConfigDialog(context, theme),
-                borderRadius: BorderRadius.circular(4),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.settings_suggest_rounded, size: 14, color: theme.textMuted),
-                      const SizedBox(width: 4),
-                      Text(
-                        'jalide.json',
-                        style: TextStyle(
-                          color: theme.textMuted,
-                          fontSize: 10,
-                          fontFamily: 'monospace',
-                        ),
+              // Botões de Desfazer e Refazer (Undo / Redo)
+              if (onUndo != null || onRedo != null) ...[
+                const SizedBox(width: 6),
+                Tooltip(
+                  message: 'Desfazer (Ctrl+Z)',
+                  child: InkWell(
+                    onTap: canUndo ? onUndo : null,
+                    borderRadius: BorderRadius.circular(4),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                      child: Icon(
+                        Icons.undo_rounded,
+                        size: 16,
+                        color: canUndo
+                            ? theme.accent
+                            : theme.textMuted.withValues(alpha: 0.35),
                       ),
-                    ],
+                    ),
                   ),
                 ),
-              ),
+                Tooltip(
+                  message: 'Refazer (Ctrl+Y)',
+                  child: InkWell(
+                    onTap: canRedo ? onRedo : null,
+                    borderRadius: BorderRadius.circular(4),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                      child: Icon(
+                        Icons.redo_rounded,
+                        size: 16,
+                        color: canRedo
+                            ? theme.accent
+                            : theme.textMuted.withValues(alpha: 0.35),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         );
@@ -163,91 +179,5 @@ class EnvironmentStatusBar extends StatelessWidget {
       'dotnet' => Icons.terminal_rounded,
       _ => Icons.folder_special_rounded,
     };
-  }
-
-  void _showGenerateConfigDialog(BuildContext context, JalideThemeVariant theme) {
-    final jsonContent = projectConfig.toFormattedJson();
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: theme.surface,
-        title: Row(
-          children: [
-            Icon(Icons.terminal_rounded, color: theme.accent, size: 20),
-            const SizedBox(width: 8),
-            Text(
-              'Configuração jalide.json',
-              style: TextStyle(color: theme.textPri, fontSize: 16),
-            ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Abaixo está a configuração gerada para este ambiente:',
-              style: TextStyle(color: theme.textMuted, fontSize: 12),
-            ),
-            const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: theme.bg,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: theme.border),
-              ),
-              child: SelectableText(
-                jsonContent,
-                style: const TextStyle(
-                  color: Color(0xFF7DCFFF),
-                  fontFamily: 'monospace',
-                  fontSize: 11,
-                ),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('Fechar', style: TextStyle(color: theme.textMuted)),
-          ),
-          if (projectPath != null)
-            ElevatedButton.icon(
-              onPressed: () async {
-                try {
-                  if (onSaveConfig != null) {
-                    await onSaveConfig!(jsonContent);
-                  } else {
-                    final targetPath = '$projectPath/jalide.json';
-                    await FileService.saveFile(targetPath, jsonContent);
-                  }
-                  if (ctx.mounted) {
-                    Navigator.pop(ctx);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('jalide.json criado com sucesso na raiz!')),
-                    );
-                    onConfigUpdated?.call();
-                  }
-                } catch (e) {
-                  if (ctx.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Erro ao salvar jalide.json: $e')),
-                    );
-                  }
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: theme.accent,
-                foregroundColor: Colors.white,
-              ),
-              icon: const Icon(Icons.save, size: 16),
-              label: const Text('Salvar na Raiz'),
-            ),
-        ],
-      ),
-    );
   }
 }
