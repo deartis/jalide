@@ -42,11 +42,26 @@ JALIDE é uma IDE móvel moderna e poderosa desenvolvida em Flutter, com suporte
 | ⚡ | **Termux Magic** | Configura Node.js + SSH no Termux com um clique |
 | 📂 | **Árvore de Pastas & SFTP** | Árvore de diretórios estilo VS Code (expansão in-place), cache anti-crash e edição remota via SFTP |
 | 🔐 | **Gestor de perfis SSH (melhorado)** | Credenciais seguras, testar conexão, indicador de status (ONLINE/OFFLINE), desconectar com um clique |
+| ↩️ | **Desfazer & Refazer Rápidos** | Botões dedicados `↩` / `↪` na barra de ambiente para fácil reversão no celular |
 | 🎹 | **Teclado auxiliar** | Atalhos `{}` `[]` `=>` otimizados para telas pequenas |
 
 ---
 
-## 🎯 O que há de novo (v1.1.0) - Julho de 2026
+## 🎯 O que há de novo (v1.2.0) - Agosto de 2026
+
+### ↩️ Desfazer & Refazer de 1-Toque
+- **Botões Dedicados na Barra de Ambiente** — Adicionados os botões `↩` (`Ctrl+Z`) e `↪` (`Ctrl+Y`) no topo da área de edição (`EnvironmentStatusBar`), permitindo reverter alterações no código instantaneamente na tela do celular.
+
+### 🎨 Status Bar Inferior Padronizada
+- **Layout de Pílulas Modernas** — Todos os chips da barra inferior foram reestruturados com fundo translúcido e ícones dedicados: `● Local` / `SSH`, `Terminal`, `Teclado` e `Linguagem`.
+
+### 🧹 Cabeçalho Limpo & Menu Organizado
+- **Ações no Menu Suspenso** — Os botões de **Ajuda** (`?`) e **Sobre** (`i`) foram movidos para o menu de 3 pontos (`⋮`), deixando a barra principal totalmente despoluída.
+- **Auto-Configuração do `jalide.json`** — O arquivo de ambiente é criado e lido de forma 100% transparente ao abrir projetos.
+
+---
+
+## 🎯 Na versão anterior (v1.1.0) - Julho de 2026
 
 ### 🧹 Formatação Inteligente & Cursor Inteligente
 - **Preservação de Foco do Cursor** — O cursor e as seleções ativas no editor agora acompanham as mudanças de recuo e formatação de código (`CodeFormatter.getFormattedOffset`), sem saltar de linha ou perder o foco do código.
